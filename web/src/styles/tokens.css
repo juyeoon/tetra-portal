@@ -1,0 +1,252 @@
+/* ==========================================================================
+   Tetra Portal 디자인 토큰 — 디자인 값의 유일한 기준(Single Source of Truth)
+   - 운영 콘솔(tetra/app/console)의 tokens.css를 복사해 브랜드 값만 바꿨다.
+     콘솔과 다른 값: 사이드바 폭(240px)·선택 표시·하단 무늬, 모서리 없음, 여백
+   - 색·글자·모서리·간격·컴포넌트 크기를 모두 여기서 바꾼다.
+   - 코드(src/theme/tokens.ts)는 이 변수를 var(--…)로 참조만 한다.
+   - 규칙 설명은 docs/style-guide.md 참고
+   ========================================================================== */
+
+:root {
+  /* ------------------------------------------------------------------
+     1. 브랜드 색 — 네이비 + 포인트 페리윙클(Canva 팔레트, 콘솔과 같은 색)
+        포인트는 현재 탭·단계, 선택 상태처럼 작은 면적에만 쓴다.
+        페리윙클은 흰 배경 위 글자색으로 쓰지 않는다(대비 부족) → 글자는 point-deep,
+        포인트로 채운 면 위의 글자는 on-point(남색)
+     ------------------------------------------------------------------ */
+  --color-point: var(--color-peri);            /* 포인트: 현재 탭 밑줄, 현재 단계, 선택 테두리 */
+  --color-point-deep: var(--color-peri-deep);  /* 흰 배경 위 포인트 글자·아이콘 */
+  --color-point-tint: var(--color-peri-tint);  /* 선택된 카드·옵션 배경 */
+  --color-point-line: var(--color-peri-line);  /* 선택 영역 구분선 */
+  --color-on-point: var(--color-navy);         /* 포인트로 채운 면 위의 글자 */
+
+  --color-navy: #10225e;          /* 주요 버튼, 로고, 로그인 패널 */
+  --color-navy-deep: #0b1844;     /* 주요 버튼 hover */
+  --color-peri: #86a1f3;          /* 포인트, 정보(파랑) 상태 톤 */
+  --color-peri-deep: #4a64c6;     /* 흰 배경 위 페리윙클 텍스트 */
+  --color-peri-tint: #e6ebfd;     /* KPI 카드 A, 정보 배지 */
+  --color-peri-line: #c9d4fa;
+  --color-blue-tint: #e5ecf6;     /* KPI 카드 B */
+  --color-mist: #a8c5da;          /* 차트 3번째 시리즈 */
+
+  /* ------------------------------------------------------------------
+     2. 중립 — 텍스트·선은 ink 한 색의 투명도로만 위계를 만든다
+     ------------------------------------------------------------------ */
+  --color-ink: #1c1f3b;
+  --color-page: #ffffff;
+  --color-card: #f7f9fb;
+  --color-surface: #ffffff;
+
+  --ink-88: color-mix(in srgb, var(--color-ink) 88%, transparent);
+  --ink-64: color-mix(in srgb, var(--color-ink) 64%, transparent);
+  --ink-40: color-mix(in srgb, var(--color-ink) 40%, transparent);
+  --ink-24: color-mix(in srgb, var(--color-ink) 24%, transparent);
+  --ink-20: color-mix(in srgb, var(--color-ink) 20%, transparent);
+  --ink-10: color-mix(in srgb, var(--color-ink) 10%, transparent);
+  --ink-5: color-mix(in srgb, var(--color-ink) 5%, transparent);
+
+  --text-primary: var(--color-ink);
+  --text-secondary: var(--ink-64);
+  --text-tertiary: var(--ink-40);
+  --text-disabled: var(--ink-24);
+
+  --line-strong: var(--ink-20);
+  --line-base: var(--ink-10);
+  --line-soft: var(--ink-5);
+
+  /* 네이비 배경(사이드바·로그인 패널) 위 */
+  --on-navy-primary: #ffffff;
+  --on-navy-secondary: rgb(255 255 255 / 72%);
+  --on-navy-tertiary: rgb(255 255 255 / 40%);
+  --on-navy-line: rgb(255 255 255 / 10%);
+  --on-navy-active: rgb(255 255 255 / 10%);
+  --on-navy-hover: rgb(255 255 255 / 5%);
+
+  /* ------------------------------------------------------------------
+     3. 상태 톤 — 파스텔 배경(bg) + 진한 글자(fg) + 범례 점(dot)
+     ------------------------------------------------------------------ */
+  --tone-blue-bg: var(--color-peri-tint);
+  --tone-blue-fg: #3e56b8;
+  --tone-blue-dot: var(--color-peri);
+
+  --tone-amber-bg: #fff3d6;
+  --tone-amber-fg: #8f6200;
+  --tone-amber-dot: #e8a33d;
+
+  --tone-green-bg: #e2f5ec;
+  --tone-green-fg: #1e8456;
+  --tone-green-dot: #2e9e6b;
+
+  --tone-red-bg: #fde9e9;
+  --tone-red-fg: #cc3636;
+  --tone-red-dot: #e5484d;
+
+  --tone-grey-bg: var(--ink-5);
+  --tone-grey-fg: var(--ink-64);
+  --tone-grey-dot: var(--ink-24);
+
+  /* ------------------------------------------------------------------
+     4. 차트
+     ------------------------------------------------------------------ */
+  --chart-1: var(--color-navy);
+  --chart-2: var(--color-peri);
+  --chart-3: var(--color-mist);
+  --chart-neutral: var(--ink-10);
+  /* 이벤트 결과 (UI-TP-6-2) — 발급 성공 파랑 / 품절 주황 / 이탈 회색 */
+  --chart-issued: #4f7be0;
+  --chart-soldout: #f2a24a;
+  --chart-dropped: var(--ink-20);
+
+  /* 이벤트 화면 배경 테마 미리보기 (UI-TP-09) — 고객사 이벤트 페이지 색, 포털 UI 색과 별개 */
+  --preview-white-bg: #ffffff;
+  --preview-white-fg: #1c1f3b;
+  --preview-white-accent: #ee6c2f;
+  --preview-orange-bg: #fff3ea;
+  --preview-orange-fg: #5a2c10;
+  --preview-orange-accent: #ee6c2f;
+  --preview-dark-bg: #1b2036;
+  --preview-dark-fg: #ffffff;
+  --preview-dark-accent: #f08a3c;
+  --preview-blue-bg: #eef3ff;
+  --preview-blue-fg: #17275c;
+  --preview-blue-accent: #3f6fe0;
+
+  /* 코드 블록 (사전 가이드) */
+  --code-bg: #151b36;
+  --code-fg: #e4e8f7;
+  --code-muted: #8a93b8;
+
+  /* ------------------------------------------------------------------
+     5. 타이포그래피
+        Snow 스케일(12/18 · 14/20 · 18/28 · 24/36 · 48/58)에 배율을 곱한다.
+        글자 크기를 한 번에 키우거나 줄이려면 --type-scale만 바꾼다.
+     ------------------------------------------------------------------ */
+  --font-heading: 'Paperlogy', 'Presentation', 'Pretendard', sans-serif;
+  --font-body: 'Presentation', 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  --type-scale: 1.25;
+
+  --fs-display: calc(48px * var(--type-scale));   /* 대표 숫자, 로그인 타이틀 */
+  --lh-display: calc(58px * var(--type-scale));
+  --fs-page: calc(24px * var(--type-scale));      /* 페이지 제목, KPI 값 */
+  --lh-page: calc(36px * var(--type-scale));
+  --fs-title: calc(18px * var(--type-scale));     /* 모달 제목, 빈 상태 제목 */
+  --lh-title: calc(28px * var(--type-scale));
+  --fs-body: calc(14px * var(--type-scale));      /* 본문, 표, 카드 제목, 버튼 */
+  --lh-body: calc(20px * var(--type-scale));
+  --fs-caption: calc(12px * var(--type-scale));   /* 라벨, 캡션, 배지, 축 라벨 */
+  --lh-caption: calc(18px * var(--type-scale));
+  --fs-mono: calc(13px * var(--type-scale));      /* 이벤트ID, 테넌트ID */
+  --fs-mono-sm: calc(12px * var(--type-scale));   /* S3 URL */
+  --fs-mask: calc(8px * var(--type-scale));       /* 인증키 마스킹 ●●● */
+
+  /* 굵기 — 본문(프리젠테이션) */
+  --fw-light: 300;
+  --fw-regular: 400;     /* 본문, 표 셀, 설명 */
+  --fw-medium: 500;      /* 라벨, 탭, 사이드바 메뉴, 표 헤더 */
+  --fw-semibold: 600;    /* 버튼, 배지, 강조 본문, 활성 탭·메뉴 */
+  --fw-bold: 700;        /* 건수 등 짧은 수치 강조 */
+
+  /* 굵기 — 제목(페이퍼로지) */
+  --fw-heading-display: 800;   /* h1: 대표 숫자, 로그인 타이틀 */
+  --fw-heading-page: 700;      /* h2: 페이지 제목, KPI 값 */
+  --fw-heading-title: 700;     /* h3: 모달 제목, 빈 상태 제목, 사이드바 로고 */
+  --fw-heading-section: 600;   /* h4~h6: 카드 제목 */
+  --ls-heading: -0.01em;
+  --ls-overline: 0.08em;
+
+  /* ------------------------------------------------------------------
+     6. 모서리 · 그림자 · 포커스
+     ------------------------------------------------------------------ */
+  /* 포털은 모서리를 두지 않는다 (콘솔: 6 / 8 / 12 / 16px). 되살리려면 이 값만 바꾼다 */
+  --radius-sm: 0;      /* 상태 배지 */
+  --radius-md: 0;      /* 버튼, 입력, 아이콘 박스 */
+  --radius-lg: 0;      /* 사이드바 메뉴, 카드 안 블록 */
+  --radius-xl: 0;      /* 카드, 모달 */
+
+  --shadow-float: 0 0 16px var(--ink-10);   /* 모달·메뉴·토스트만 */
+  --shadow-modal: 0 0 16px var(--ink-10), 0 24px 48px -24px var(--ink-24);
+  /* 포커스는 페리윙클 (스타일 가이드와 같음) */
+  --focus-color: var(--color-peri);
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-peri) 45%, transparent);
+  --focus-ring-soft: 0 0 0 3px color-mix(in srgb, var(--color-peri) 25%, transparent);
+  --backdrop: var(--ink-20);
+
+  /* ------------------------------------------------------------------
+     7. 간격 · 레이아웃
+        MUI spacing(1) = --space-unit. (p: 3 → 3 × 8px = 24px)
+     ------------------------------------------------------------------ */
+  --space-unit: 8px;
+
+  --page-max-width: 1440px;
+  --page-padding-x: 36px;
+  --page-padding-x-mobile: 16px;
+  --card-padding: 28px;
+  --card-gap: 32px;
+
+  /* 사이드바 — 화면설계서: 모든 화면 좌측 고정 240px.
+     콘솔과 같은 틀(화면에 붙은 남색 + 흰 로고 + 영문 표기)이고,
+     선택 표시(흰 배경)와 하단 물결 무늬로 구분한다 */
+  --sidebar-width: 240px;
+  --sidebar-radius: 0;
+  --sidebar-bg: var(--color-navy);
+  --sidebar-brand-accent: var(--color-point);       /* 로고 옆 PORTAL */
+  --sidebar-text: var(--on-navy-secondary);
+  --sidebar-icon: var(--on-navy-tertiary);
+  --sidebar-disabled: rgb(255 255 255 / 30%);
+  --sidebar-hover: var(--on-navy-hover);
+  --sidebar-active-bg: #ffffff;                     /* 활성 메뉴: 흰 배경 */
+  --sidebar-active-text: var(--color-navy);
+  --sidebar-active-icon: var(--color-point-deep);   /* 흰 배경 위라 진한 페리윙클 */
+  --sidebar-pattern-opacity: 0.22;                  /* 하단 물결 무늬 (흰 선 PNG) */
+
+  /* 상단바 (경로 · 페이지 제목 · 사용자) */
+  --topbar-bg: #ffffff;
+  --topbar-border: var(--line-base);
+  --topbar-padding-y: 20px;
+
+  /* ------------------------------------------------------------------
+     8. 컴포넌트 크기 (글자 배율에 맞춰 조정)
+     ------------------------------------------------------------------ */
+  --control-h: 44px;       /* 버튼·입력 기본 높이 */
+  --control-h-sm: 34px;
+  --control-h-lg: 52px;
+  --nav-item-h: 44px;      /* 사이드바 메뉴 */
+  --tab-h: 44px;
+  --row-min-h: 52px;       /* 정보 목록 행 */
+  --badge-h: 28px;         /* 상태 배지 */
+  --plan-badge: 28px;      /* S/M/L 배지 */
+  --icon-box: 30px;        /* 알림 아이콘 박스 */
+  --icon-box-lg: 56px;     /* 빈 상태 아이콘 박스 */
+  --avatar-sm: 30px;
+  --avatar-md: 44px;
+  --dot: 6px;              /* 범례·건수 점 */
+  --icon-sm: 16px;         /* 인라인 아이콘 */
+  --icon-md: 20px;         /* 메뉴 아이콘 */
+  --icon-lg: 28px;         /* 빈 상태 아이콘 */
+  --flow-node: 104px;      /* 대시보드 처리 현황 네임스페이스 원 */
+
+  /* 정보 목록(라벨/값) 라벨 폭 */
+  --info-label-w: 140px;
+  --info-label-w-wide: 184px;
+  --info-label-w-mobile: 112px;
+
+  /* 단일 컬럼 콘텐츠 최대 폭 */
+  --content-narrow: 480px;   /* 로그인 폼, 비밀번호 설정 */
+  --content-form: 680px;     /* 테넌트 등록, 시스템 설정 */
+  --content-text: 760px;     /* 메일 미리보기, 안내 문구 */
+  --modal-sm: 420px;         /* 테넌트 정보 수정 모달 */
+
+  /* ------------------------------------------------------------------
+     9. KPI 카드 강조 — 포털은 띠 없이 숫자만 (콘솔은 네이비 띠 + 흰 글자)
+        띠를 켜려면 bg → var(--color-navy), fg → #ffffff, pad-x → 0.3em
+     ------------------------------------------------------------------ */
+  --kpi-label-color: var(--text-primary);
+  --kpi-value-bg: transparent;
+  --kpi-value-fg: var(--text-primary);
+  --kpi-value-pad-x: 0;
+  --kpi-value-radius: 0;
+  /* 값은 한 줄 유지 — 카드가 좁으면 카드 폭 비율(cqi)만큼 줄어들고, 최대 크기는 --fs-page */
+  --kpi-value-fluid: 8.6cqi;
+}
