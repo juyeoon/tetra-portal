@@ -7,6 +7,7 @@ import java.util.List;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 /**
  * 테스트 데이터 준비·확인. 앱 계정이 아니라 root로 직접 넣고 읽는다(앱 코드를 거치지 않음).
@@ -66,13 +67,36 @@ public final class TestData {
 		}
 	}
 
+	private static final BCryptPasswordEncoder BCRYPT = new BCryptPasswordEncoder(4); // 시험 속도용 낮은 cost
+
+	/** 비밀번호를 설정한 테넌트. email = admin@{tenantId}.example.com */
+	public void tenantWithPassword(String tenantId, String name, String rawPassword, String accountStatus,
+			String provisioningStatus) {
+		tenant(tenantId, name, accountStatus, provisioningStatus);
+		jdbc.update("UPDATE tetra_platform.tenant SET password = ? WHERE tenant_id = ?", BCRYPT.encode(rawPassword),
+				tenantId);
+	}
+
+	public static String email(String tenantId) {
+		return "admin@" + tenantId + ".example.com";
+	}
+
+	public String passwordHash(String tenantId) {
+		return jdbc.queryForObject("SELECT password FROM tetra_platform.tenant WHERE tenant_id = ?", String.class,
+				tenantId);
+	}
+
+	public void deleteTenant(String tenantId) {
+		jdbc.update("DELETE FROM tetra_platform.tenant WHERE tenant_id = ?", tenantId);
+	}
+
 	/** 비밀번호 없는 테넌트(Console WF5 등록 직후 모양). */
 	public void tenant(String tenantId, String name, String accountStatus, String provisioningStatus) {
 		jdbc.update("""
 				INSERT INTO tetra_platform.tenant (tenant_id, name, root_domain, created_at, email, password, contact_name,
 				                                   account_status, provisioning_status)
-				VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)""", tenantId, name, tenantId + ".example.com", BASE,
-				"admin@" + tenantId + ".example.com", name + " 담당자", accountStatus, provisioningStatus);
+				VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)""", tenantId, name, tenantId + ".example.com", BASE, email(tenantId),
+				name + " 담당자", accountStatus, provisioningStatus);
 	}
 
 }

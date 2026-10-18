@@ -9,6 +9,10 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.tetra.portal.auth.JwtTokenService;
+
+import jakarta.servlet.http.Cookie;
+
 /**
  * 통합 테스트 공통. 실제 MySQL 8.4(공용 1 + 테넌트 2 스키마)에 DML 전용 계정으로 붙는다.
  * 커넥션 풀을 1개로 두어, 앞 요청이 바꾼 스키마가 다음 요청에 남지 않는지(반납 시 초기화)도 함께 검증된다.
@@ -37,10 +41,18 @@ public abstract class IntegrationTest {
 	@Autowired
 	protected MockMvc mvc;
 
+	@Autowired
+	protected JwtTokenService tokens;
+
 	@BeforeEach
 	void resetData() {
 		data = TestData.shared();
 		data.reset();
+	}
+
+	/** 그 테넌트로 로그인한 쿠키. */
+	protected Cookie loginCookie(String tenantId) {
+		return new Cookie(JwtTokenService.COOKIE_NAME, tokens.issue(tenantId));
 	}
 
 }

@@ -49,3 +49,7 @@ tetra:
   env: ${TETRA_ENV}
   aws:
     region: ${AWS_REGION}
+  auth:
+    jwt-secret: ${PORTAL_JWT_SECRET}
+  password-link:
+    hmac-secret: ${PASSWORD_LINK_HMAC_SECRET}

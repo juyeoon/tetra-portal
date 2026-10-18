@@ -6,7 +6,22 @@
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | P0 | 뼈대 — 설정 · 오류 형식 · 스키마 멀티테넌시 · 화면 서빙 · 헬스 체크 · 시험 · 로컬 실행 | ✅ |
-| P1 ~ P6 | 인증 → 조회 → 신청(WF1-1) → 결과 → 부가 → 배포 | 예정 |
+| P1 | 인증 — 로그인 · 로그아웃 · 계정 정보 · 비밀번호 설정(Console 링크) | ✅ |
+| P2 ~ P6 | 조회 → 신청(WF1-1) → 결과 → 부가 → 배포 | 예정 |
+
+## API (지금까지)
+
+| API | 인증 | 설명 |
+|---|---|---|
+| `POST /api/portal/auth/login` `{email, password}` | 공개 | 성공 → 쿠키 `TETRA_PORTAL_TOKEN`(HttpOnly · Secure · SameSite=Strict · Path=/api/portal · 8시간) + `{tenantId, companyName, managerName, email}`. 실패는 이유와 상관없이 401 `LOGIN_FAILED` |
+| `POST /api/portal/auth/logout` | 공개 | 쿠키 삭제, 204 |
+| `GET /api/portal/me` | 쿠키 | 로그인한 계정(위와 같은 모양) |
+| `POST /api/portal/password/setup/verify` `{t, exp, sig}` | 공개 | 메일 링크 확인 → `{email}`. 만료 · 사용됨 · 위조는 모두 410 `PASSWORD_LINK_INVALID` |
+| `POST /api/portal/password/setup` `{t, exp, sig, password}` | 공개 | 비밀번호 8~64자 → 204. 같은 링크는 한 번만 |
+
+- 비밀번호 설정 링크는 Console이 만든다: `{Portal}/password/setup?t={tenant_id}&exp={epoch초}&sig={서명}`. 화면은 주소의 세 값을 그대로 본문에 담아 보낸다(확인도 POST — 서명이 접근 로그에 한 번 더 남지 않게).
+- 상태를 바꾸는 API는 JSON 본문만 받는다(그 밖은 415). CSRF 토큰 대신 SameSite=Strict 쿠키 + JSON 전용.
+- 전체 문서: 로컬에서 `http://localhost:8082/swagger-ui.html`.
 
 ---
 
@@ -23,7 +38,7 @@
 ## 로컬 실행
 
 ```bash
-cp .env.example .env              # DB_PASSWORD · LOCAL_MYSQL_ROOT_PASSWORD 에 아무 값
+cp .env.example .env              # 빈 값에 아무 값 (PORTAL_JWT_SECRET은 32자 이상)
 docker compose up -d --wait       # MySQL 3307 — 스키마 · 앱 계정 · seed(요금제 · 테넌트 2개)를 첫 기동 때 만든다
 ./gradlew bootRun                 # .env 값을 환경 변수로 넣어 띄운다 → http://localhost:8082
 ```
@@ -31,11 +46,22 @@ docker compose up -d --wait       # MySQL 3307 — 스키마 · 앱 계정 · se
 | 확인 | 기대 |
 |---|---|
 | `curl localhost:8082/actuator/health` | `{"status":"UP"}` (DB 포함) |
-| `curl localhost:8082/api/portal/me` | 401 `UNAUTHENTICATED` (로그인은 P1) |
+| `curl localhost:8082/api/portal/me` | 401 `UNAUTHENTICATED` (로그인 전) |
 | `http://localhost:8082/swagger-ui.html` | API 문서 (`API_DOCS_ENABLED=true`일 때만) |
 
 - 포트: 로컬은 **8082**(issuance-api 로컬이 8080 · 8081을 쓴다). 운영(ECS)은 8080.
-- 로컬 테넌트: `k7f2m9qx4b1t`(테넌트컴퍼니, `admin@tenant-company.com`) · `d4n8p2r6s0v1` — 비밀번호는 아직 없다(P1).
+- 로컬 테넌트: `k7f2m9qx4b1t`(테넌트컴퍼니, `admin@tenant-company.com`) · `d4n8p2r6s0v1`(`owner@second-shop.com`) — 처음엔 비밀번호가 없다(Console 가입 직후와 같음). 아래로 설정한다.
+
+### 로컬에서 비밀번호 설정 · 로그인
+
+Console 없이 "가입 메일 링크"를 만든다(같은 서명 규칙, `.env`의 `PASSWORD_LINK_HMAC_SECRET` 사용).
+
+```powershell
+.\docker\local\password-link.ps1                                  # 화면 개발 서버(5174)용 링크 — 브라우저로 열기
+.\docker\local\password-link.ps1 -TenantId d4n8p2r6s0v1 -BaseUrl http://localhost:8082
+```
+
+링크로 비밀번호를 정한 뒤 그 이메일 · 비밀번호로 로그인한다. 링크는 한 번만 쓸 수 있다(다시 하려면 스크립트를 다시 실행).
 - 데이터를 처음부터 다시: `docker compose down -v` → `up`.
 - 화면과 함께: `../web`에서 `npm run build` 뒤 `./gradlew bootRun`이면 `web/dist`가 같이 서빙된다. 화면 개발 서버(`npm run dev`, 5174)는 `vite.config.ts`의 `server.proxy`로 `/api` → `http://localhost:8082`.
 
@@ -43,6 +69,8 @@ docker compose up -d --wait       # MySQL 3307 — 스키마 · 앱 계정 · se
 
 ```
 src/main/java/com/tetra/portal/
+├─ auth/          로그인 · JWT 쿠키 · 로그인한 테넌트(CurrentTenant)
+├─ account/       비밀번호 설정(Console 링크 검증)
 ├─ config/        설정 · 보안 · 화면 서빙(SpaWebConfig) · API 문서 · 멀티테넌시 연결
 ├─ common/        오류 형식(error/) · KST 시간(time/) · DB 오류 판별
 ├─ tenancy/       스키마 라우팅 — TenantRouter.inTenant()만 테넌트 스키마로 들어간다
@@ -51,7 +79,7 @@ src/main/java/com/tetra/portal/
 
 ### 지킬 것 (Console API와 같은 규칙)
 
-- **테넌트 스키마는 `TenantRouter.inTenant(tenantId, …)` 안에서만**, 그리고 **트랜잭션 밖에서** 부른다(안에서 부르면 예외). tenant_id는 로그인 정보(JWT)에서만 가져온다 — 요청 경로 · 본문 값으로 라우팅하지 않는다.
+- **테넌트 스키마는 `TenantRouter.inTenant(tenantId, …)` 안에서만**, 그리고 **트랜잭션 밖에서** 부른다(안에서 부르면 예외). tenant_id는 로그인 정보(`CurrentTenant.id(jwt)`)에서만 가져온다 — 요청 경로 · 본문 값으로 라우팅하지 않는다.
 - 테넌트 엔티티는 `TenantScopedEntity`를 상속한다 → 읽은 행의 `tenant_id`가 라우팅한 테넌트와 다르면 500(이중 확인).
 - 스키마를 바꾸지 않는다(`ddl-auto=none`, 계정도 DML만). 열이 필요하면 db-schema 저장소 MR.
 - 응답 일시는 ISO `+09:00`, 상태 값은 DB 값 그대로, 오류는 `ErrorResponse {code, message, fields?}`.
