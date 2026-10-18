@@ -12,22 +12,25 @@ import org.springdoc.core.customizers.OperationCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.tetra.portal.auth.JwtTokenService;
 import com.tetra.portal.common.error.ApiErrorCodes;
 import com.tetra.portal.common.error.ErrorCode;
 import com.tetra.portal.common.error.ErrorResponse;
 
 import io.swagger.v3.core.converter.ModelConverters;
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 
 /**
  * 프런트용 API 문서(springdoc). /v3/api-docs(JSON), /swagger-ui.html(화면).
  * API_DOCS_ENABLED=true일 때만 열린다(기본 꺼짐, application.yml). 문서화 대상은 /api/**.
- * 인증 쿠키 설명은 P1(로그인)에서 붙인다.
  */
 @Configuration(proxyBeanMethods = false)
 public class OpenApiConfig {
@@ -36,6 +39,10 @@ public class OpenApiConfig {
 
 	private static final String DESCRIPTION = """
 			Tetra Portal(고객사 관리자용) API. 화면은 같은 출처의 상대 경로 `/api`로 호출합니다.
+
+			**인증**: `POST /api/portal/auth/login`에 성공하면 HttpOnly 쿠키 `TETRA_PORTAL_TOKEN`(8시간)이 내려옵니다.
+			이후 `/api/portal/**` 호출에는 브라우저가 쿠키를 자동으로 붙입니다. 공개 API(로그인 · 로그아웃 · 비밀번호 설정)를 뺀
+			모든 API는 쿠키가 없거나 만료되면 401 `UNAUTHENTICATED`입니다. 상태를 바꾸는 API는 JSON 본문만 받습니다.
 
 			**공통 형식**
 			- 일시: `+09:00`이 붙은 ISO-8601 문자열 (예: `2026-10-14T14:02:00+09:00`). 화면 표시 형식은 화면에서 바꿉니다
@@ -46,9 +53,17 @@ public class OpenApiConfig {
 			400이면 `fields`에 항목별 사유가 들어갑니다.
 			""";
 
+	static final String COOKIE_AUTH = "cookieAuth";
+
 	@Bean
 	OpenAPI tetraOpenApi() {
-		return new OpenAPI().info(new Info().title("Tetra Portal API").version("v1").description(DESCRIPTION));
+		return new OpenAPI().info(new Info().title("Tetra Portal API").version("v1").description(DESCRIPTION))
+			.components(new Components().addSecuritySchemes(COOKIE_AUTH,
+					new SecurityScheme().type(SecurityScheme.Type.APIKEY)
+						.in(SecurityScheme.In.COOKIE)
+						.name(JwtTokenService.COOKIE_NAME)
+						.description("로그인 API가 내려주는 HttpOnly 쿠키(8시간). 브라우저가 /api/portal/** 호출에 자동으로 붙인다")))
+			.addSecurityItem(new SecurityRequirement().addList(COOKIE_AUTH));
 	}
 
 	/** ErrorResponse 스키마를 components에 등록한다. */
@@ -57,9 +72,6 @@ public class OpenApiConfig {
 		return openApi -> {
 			@SuppressWarnings("rawtypes")
 			Map<String, Schema> schemas = ModelConverters.getInstance().read(ErrorResponse.class);
-			if (openApi.getComponents() == null) {
-				openApi.components(new io.swagger.v3.oas.models.Components());
-			}
 			schemas.forEach((name, schema) -> openApi.getComponents().addSchemas(name, schema));
 		};
 	}
@@ -72,6 +84,10 @@ public class OpenApiConfig {
 			ApiErrorCodes declared = handlerMethod.getMethodAnnotation(ApiErrorCodes.class);
 			if (declared != null) {
 				codes.addAll(List.of(declared.value()));
+			}
+			boolean publicApi = operation.getSecurity() != null && operation.getSecurity().isEmpty();
+			if (!publicApi && !codes.contains(ErrorCode.UNAUTHENTICATED)) {
+				codes.add(ErrorCode.UNAUTHENTICATED);
 			}
 			codes.add(ErrorCode.INTERNAL_ERROR);
 

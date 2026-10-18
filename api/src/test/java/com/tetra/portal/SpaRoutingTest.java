@@ -10,7 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import org.junit.jupiter.api.Test;
 
+import com.tetra.portal.auth.JwtTokenService;
 import com.tetra.portal.support.IntegrationTest;
+
+import jakarta.servlet.http.Cookie;
 
 /**
  * 화면과 API를 한 이미지로 서빙. 화면 파일은 인증 없이, /api/**만 인증.
@@ -54,6 +57,20 @@ class SpaRoutingTest extends IntegrationTest {
 			.andExpect(jsonPath("$.code").value("UNAUTHENTICATED"));
 		mvc.perform(get("/api/portal/unknown")).andExpect(status().isUnauthorized());
 		mvc.perform(get("/actuator/env")).andExpect(status().isUnauthorized());
+		// 로그인해도 없는 API는 index.html이 아니라 404 JSON
+		data.tenant(A, "A사", "ACTIVE", "READY");
+		mvc.perform(get("/api/portal/unknown").cookie(loginCookie(A)))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("NOT_FOUND"));
+	}
+
+	@Test
+	void expiredCookieOnScreenRequestDoesNotBreakPage() throws Exception {
+		Cookie broken = new Cookie(JwtTokenService.COOKIE_NAME, "expired-or-garbage");
+		mvc.perform(get("/events/1043").cookie(broken))
+			.andExpect(status().isOk())
+			.andExpect(content().string(containsString(INDEX_MARK)));
+		mvc.perform(get("/api/portal/me").cookie(broken)).andExpect(status().isUnauthorized());
 	}
 
 	@Test

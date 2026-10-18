@@ -16,3 +16,7 @@ tetra:
   env: test
   aws:
     region: ap-northeast-2
+  auth:
+    jwt-secret: test-portal-jwt-secret-0123456789abcdef
+  password-link:
+    hmac-secret: test-hmac-secret

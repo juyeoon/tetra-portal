@@ -13,6 +13,7 @@ public enum ErrorCode {
 
 	// 401
 	UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
+	LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "계정 정보를 찾을 수 없습니다."),
 
 	// 403
 	FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
@@ -24,8 +25,14 @@ public enum ErrorCode {
 	// 405
 	METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "지원하지 않는 메서드입니다."),
 
+	// 415 — 상태를 바꾸는 API는 JSON만 (다른 사이트의 form 전송 차단)
+	UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 요청 형식입니다."),
+
 	// 409
 	TENANT_NOT_READY(HttpStatus.CONFLICT, "테넌트 환경 준비가 끝나지 않았습니다."),
+
+	// 410 — 비밀번호 설정 링크: 만료 · 이미 사용 · 위조를 구분하지 않는다(UI-TP-04 만료 화면 하나)
+	PASSWORD_LINK_INVALID(HttpStatus.GONE, "링크가 만료되었거나 이미 사용되었습니다."),
 
 	// 500
 	INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "처리 중 오류가 발생했습니다.");
