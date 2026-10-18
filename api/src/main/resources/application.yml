@@ -1,0 +1,51 @@
+# 키와 ${ENV_NAME} 참조만 둔다. 환경별 값·비밀 값은 환경 변수로 주입한다(ECS 태스크 정의 — 인프라 약속 4절).
+# 기본값은 비밀이 아니고 환경과 무관한 값에만 둔다.
+spring:
+  application:
+    name: tetra-portal-api
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10   # 같은 RDS를 발급 API · Console과 나눠 쓴다(계획서 2-1 ①). 늘릴 때는 인프라와
+  jpa:
+    open-in-view: false   # 요청 시작 때 기본 스키마로 세션이 열리지 않도록 끈다 (라우팅은 트랜잭션 시작 시점에 결정)
+    hibernate:
+      ddl-auto: none      # 앱 계정은 DML만 — 스키마는 db-schema 저장소(Flyway)가 관리
+  jackson:
+    time-zone: Asia/Seoul
+  lifecycle:
+    timeout-per-shutdown-phase: 20s   # ALB 등록 해제 30초 · 컨테이너 stopTimeout 30초 안에 (인프라 약속 3절)
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  forward-headers-strategy: framework   # ALB가 TLS를 끝내고 X-Forwarded-Proto/For를 붙인다 (인프라 약속 6절)
+
+# 프런트용 API 문서(/v3/api-docs, /swagger-ui.html). 기본 꺼짐, dev 등에서 API_DOCS_ENABLED=true로 켠다
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:false}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:false}
+  paths-to-match: /api/**
+  default-produces-media-type: application/json
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+
+tetra:
+  env: ${TETRA_ENV}
+  aws:
+    region: ${AWS_REGION}
