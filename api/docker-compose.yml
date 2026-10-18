@@ -1,0 +1,31 @@
+# 로컬 실행용 MySQL. 사용법은 api/README.md "로컬 실행"
+# - db/migration(db-schema 사본)으로 tetra_platform + 테넌트 스키마(LOCAL_TENANT_IDS)를 만들고 docker/local/seed를 넣는다.
+# - 앱 계정(DB_USERNAME)은 DML 권한만 받는다(dev RDS와 같음). 데이터를 다시 만들려면 docker compose down -v
+# - Console 로컬 MySQL(3306)과 함께 띄울 수 있게 3307을 쓴다.
+# 값은 .env에서 읽는다(.env.example 참고, .env는 커밋하지 않음).
+name: tetra-portal-local
+
+services:
+  mysql:
+    image: mysql:8.4
+    command: ["--default-time-zone=+09:00"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${LOCAL_MYSQL_ROOT_PASSWORD:?LOCAL_MYSQL_ROOT_PASSWORD를 .env에 넣어 주세요}
+      APP_DB_USERNAME: ${DB_USERNAME:?DB_USERNAME을 .env에 넣어 주세요}
+      APP_DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD를 .env에 넣어 주세요}
+      LOCAL_TENANT_IDS: "k7f2m9qx4b1t d4n8p2r6s0v1"
+      TZ: Asia/Seoul
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./docker/local/mysql-init:/docker-entrypoint-initdb.d:ro
+      - ./db/migration:/migration:ro
+      - ./docker/local/seed:/seed:ro
+      - tetra-portal-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      retries: 30
+
+volumes:
+  tetra-portal-mysql:

@@ -1,0 +1,18 @@
+# 테스트 전용 값. 실제 환경 값·비밀이 아니다.
+spring:
+  datasource:
+    # url·username·password는 테스트 베이스 클래스가 Testcontainers 값으로 넣는다
+    url: jdbc:mysql://placeholder/tetra_platform
+    username: placeholder
+    password: placeholder
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+tetra:
+  env: test
+  aws:
+    region: ap-northeast-2
