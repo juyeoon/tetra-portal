@@ -228,6 +228,32 @@ public final class TestData {
 				detail, changedBy);
 	}
 
+	/** 집계 Job이 넣는 행(Redis 지표). history_* 는 비어 있음 → 결과 state = AGGREGATING(만료 시). */
+	public void summaryAggregated(String tenantId, long eventId, long sessions, long tickets, long peak,
+			LocalDateTime peakAt) {
+		jdbc.update("""
+				INSERT INTO t_%s.event_result_summary (event_id, tenant_id, session_count, ticket_count, peak_concurrent, peak_at, metrics_finalized_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)""".formatted(tenantId), eventId, tenantId, sessions, tickets, peak, peakAt,
+				BASE.plusDays(1));
+	}
+
+	/** 발급 이력 저장 API가 채우는 값 → 결과 state = READY. */
+	public void summaryHistory(String tenantId, long eventId, long stock, long success, long soldout, String rate,
+			String historyPath, LocalDateTime generatedAt) {
+		jdbc.update("""
+				UPDATE t_%s.event_result_summary SET total_stock = ?, success_count = ?, soldout_count = ?, sellout_rate = ?,
+				       history_file_path = ?, history_generated_at = ? WHERE event_id = ?""".formatted(tenantId), stock, success,
+				soldout, new java.math.BigDecimal(rate), historyPath, generatedAt, eventId);
+	}
+
+	public void issuance(String tenantId, String rowTenantId, long eventId, String userId, int ticket,
+			LocalDateTime queueEnteredAt, String result) {
+		jdbc.update("""
+				INSERT INTO t_%s.issuance_history (event_id, tenant_id, user_id, ticket_number, session_issued_at, queue_entered_at, issued_at, result)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)""".formatted(tenantId), eventId, rowTenantId, userId, ticket,
+				queueEnteredAt.minusSeconds(5), queueEnteredAt, queueEnteredAt.plusSeconds(1), result);
+	}
+
 	// ---------------------------------------------------------------- read
 
 	public Map<String, Object> registry(long eventId) {

@@ -22,7 +22,9 @@ import com.tetra.portal.domain.tenant.EventRepository;
 import com.tetra.portal.domain.tenant.EventStatusLog;
 import com.tetra.portal.domain.tenant.EventStatusLogRepository;
 import com.tetra.portal.domain.tenant.CouponRepository;
+import com.tetra.portal.domain.tenant.EventResultSummaryRepository;
 import com.tetra.portal.event.EventResponses.Actor;
+import com.tetra.portal.result.ResultReader;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -41,14 +43,17 @@ class EventReader {
 
 	private final EventStatusLogRepository statusLogs;
 
+	private final EventResultSummaryRepository summaries;
+
 	private final JsonMapper jsonMapper;
 
 	EventReader(EventRepository events, CouponRepository coupons, EventBillingRepository billings,
-			EventStatusLogRepository statusLogs, JsonMapper jsonMapper) {
+			EventStatusLogRepository statusLogs, EventResultSummaryRepository summaries, JsonMapper jsonMapper) {
 		this.events = events;
 		this.coupons = coupons;
 		this.billings = billings;
 		this.statusLogs = statusLogs;
+		this.summaries = summaries;
 		this.jsonMapper = jsonMapper;
 	}
 
@@ -89,7 +94,7 @@ class EventReader {
 				e.getEndpointUrl(), e.getTrafficPlanCode(), e.getStockCount(), Kst.toOffset(e.getAppliedAt()),
 				tenant.getContactName(),
 				new EventResponses.Status(e.getApplicationStatus(), e.getHostingStatus(), e.getEventStatus(),
-						e.getRejectReason()),
+						e.getRejectReason(), ResultReader.state(e, summaries.findById(eventId).orElse(null))),
 				couponItems, jsonMapper.readTree(e.getLayoutConfig()), billing, domain(e, tenant), logs);
 	}
 
