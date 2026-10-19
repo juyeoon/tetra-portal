@@ -4,8 +4,9 @@
 
 | 파일 | 원본 | 복사한 커밋 |
 |---|---|---|
-| `migration/platform/V1__init_platform_schema.sql` | db-schema `db/migration/platform/` | `a0029bb` (2026-10-16) |
-| `migration/tenant/V1__init_tenant_schema.sql` | db-schema `db/migration/tenant/` | `a0029bb` (2026-10-16) |
+| `migration/platform/V1__init_platform_schema.sql` | db-schema `db/migration/platform/` | main `5211b81` (2026-10-16, 내용 같음 — 줄바꿈만 다름) |
+| `migration/platform/V2__seed_plans_templates.sql` | db-schema `db/migration/platform/` | 브랜치 `feat/2-seed-plans-templates` (2026-10-19) — db-schema MR 병합 뒤 main 커밋으로 갱신 |
+| `migration/tenant/V1__init_tenant_schema.sql` | db-schema `db/migration/tenant/` | main `5211b81` (2026-10-16) |
 
 - **여기서 고치지 않는다.** 스키마 변경은 db-schema 저장소 MR(Flyway)로만 한다 — dev RDS에도 그 MR이 적용된다.
 - db-schema에 새 V 파일이 병합되면 같은 이름으로 여기에 복사하고 표의 커밋을 갱신한다. 시험은 `V*`를 이름 순서로 모두 적용한다.

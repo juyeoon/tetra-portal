@@ -22,8 +22,8 @@
 | `GET /api/portal/me` | 쿠키 | 로그인한 계정(위와 같은 모양) |
 | `POST /api/portal/password/setup/verify` `{t, exp, sig}` | 공개 | 메일 링크 확인 → `{email}`. 만료 · 사용됨 · 위조는 모두 410 `PASSWORD_LINK_INVALID` |
 | `POST /api/portal/password/setup` `{t, exp, sig, password}` | 공개 | 비밀번호 8~64자 → 204. 같은 링크는 한 번만 |
-| `GET /api/portal/plans` | 쿠키 | 노출된 요금제(작은 것부터) `{planCode, maxCapacity, hourlyPrice, hostingHourlyPrice}` |
-| `GET /api/portal/events` | 쿠키 | 내 이벤트 목록(최근 신청 먼저) — 상태 3종 · 기간 · 요금제 · 예상 비용 |
+| `GET /api/portal/plans` | 쿠키 | 노출된 요금제(작은 것부터) `{planCode, maxCapacity}` — **금액은 내보내지 않는다**(2026-10-19) |
+| `GET /api/portal/events` | 쿠키 | 내 이벤트 목록(최근 신청 먼저) — 상태 3종 · 기간 · 요금제 |
 | `POST /api/portal/events` (multipart) | 쿠키 | 신청 — `application` 파트(JSON, **Content-Type: application/json**) + `banner` 파트(PNG · JPEG ≤ 2MB) → 202 `{eventId, applicationStatus: APPLYING}`. 배너가 올라가면 APPLIED, 실패하면 APPLY_FAILED(원인은 진행 기록) — 상세로 확인. 검사 실패는 400 `fields`에 항목별 사유 |
 | `GET /api/portal/events/{eventId}/result` | 쿠키 | 결과 탭 — `state`(READY · AGGREGATING · IN_PROGRESS · END_FAILED)에 따라 지표 · 구성 · 분 단위 추이 / 실패 원인. Console 결과와 같은 판정 · 숫자 |
 | `GET /api/portal/events/{eventId}/result/history-csv` | 쿠키 | `{url, expiresAt}` — S3 presigned URL(5분). 열면 `issuance-history-{id}.csv`로 저장. READY 아니면 409 `RESULT_NOT_READY`. 로컬은 받을 수 없는 가짜 주소 |
@@ -31,7 +31,7 @@
 | `GET /api/portal/reports` · `GET …/{id}/download` · `POST …/{id}/email` | 쿠키 | 리포트 목록 · 다운로드 링크(presigned 5분) · 로그인 이메일로 안내 메일(204, SES 실패 503) |
 | `GET /api/portal/settings` · `PATCH …/email {enabled}` | 쿠키 | `{emailEnabled, slackAvailable: false}` |
 | `POST /api/portal/support-mail` `{from, subject, body}` | 공개 | 운영팀 주소(`MAIL_SUPPORT_TO`)로만, Reply-To = from → 204 / 503 |
-| `GET /api/portal/events/{eventId}` | 쿠키 | 상세 — 신청 내용 · 쿠폰 · 화면 구성(`layout` JSON) · 비용 · 도메인(승인 후, 만료 전) · 진행 기록(`actor`: TENANT · OPERATOR · SYSTEM). 다른 테넌트 이벤트는 404 |
+| `GET /api/portal/events/{eventId}` | 쿠키 | 상세 — 신청 내용 · 쿠폰 · 화면 구성(`layout` JSON) · 도메인(승인 후, 만료 전) · 진행 기록(`actor`: TENANT · OPERATOR · SYSTEM). 다른 테넌트 이벤트는 404 |
 
 - 비밀번호 설정 링크는 Console이 만든다: `{Portal}/password/setup?t={tenant_id}&exp={epoch초}&sig={서명}`. 화면은 주소의 세 값을 그대로 본문에 담아 보낸다(확인도 POST — 서명이 접근 로그에 한 번 더 남지 않게).
 - 상태를 바꾸는 API는 JSON 본문만 받는다(그 밖은 415). CSRF 토큰 대신 SameSite=Strict 쿠키 + JSON 전용.

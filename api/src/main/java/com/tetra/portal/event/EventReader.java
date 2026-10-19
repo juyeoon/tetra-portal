@@ -1,9 +1,6 @@
 package com.tetra.portal.event;
 
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,8 +13,6 @@ import com.tetra.portal.domain.EventStatus;
 import com.tetra.portal.domain.StatusType;
 import com.tetra.portal.domain.platform.Tenant;
 import com.tetra.portal.domain.tenant.Event;
-import com.tetra.portal.domain.tenant.EventBilling;
-import com.tetra.portal.domain.tenant.EventBillingRepository;
 import com.tetra.portal.domain.tenant.EventRepository;
 import com.tetra.portal.domain.tenant.EventStatusLog;
 import com.tetra.portal.domain.tenant.EventStatusLogRepository;
@@ -39,19 +34,16 @@ class EventReader {
 
 	private final CouponRepository coupons;
 
-	private final EventBillingRepository billings;
-
 	private final EventStatusLogRepository statusLogs;
 
 	private final EventResultSummaryRepository summaries;
 
 	private final JsonMapper jsonMapper;
 
-	EventReader(EventRepository events, CouponRepository coupons, EventBillingRepository billings,
-			EventStatusLogRepository statusLogs, EventResultSummaryRepository summaries, JsonMapper jsonMapper) {
+	EventReader(EventRepository events, CouponRepository coupons, EventStatusLogRepository statusLogs,
+			EventResultSummaryRepository summaries, JsonMapper jsonMapper) {
 		this.events = events;
 		this.coupons = coupons;
-		this.billings = billings;
 		this.statusLogs = statusLogs;
 		this.summaries = summaries;
 		this.jsonMapper = jsonMapper;
@@ -59,18 +51,13 @@ class EventReader {
 
 	@Transactional(readOnly = true)
 	public List<EventResponses.Summary> list() {
-		List<Event> rows = events.findAllByOrderByAppliedAtDescEventIdDesc();
-		Map<Long, EventBilling> billingById = billings.findAllById(rows.stream().map(Event::getEventId).toList())
+		return events.findAllByOrderByAppliedAtDescEventIdDesc()
 			.stream()
-			.collect(Collectors.toMap(EventBilling::getEventId, Function.identity()));
-		return rows.stream().map(e -> {
-			EventBilling billing = billingById.get(e.getEventId());
-			return new EventResponses.Summary(e.getEventId(), e.getName(), e.getEventType(), e.getApplicationStatus(),
+			.map(e -> new EventResponses.Summary(e.getEventId(), e.getName(), e.getEventType(), e.getApplicationStatus(),
 					e.getHostingStatus(), e.getEventStatus(), Kst.toOffset(e.getStartAt()), Kst.toOffset(e.getEndAt()),
 					Kst.toOffset(e.getHostingStartAt()), Kst.toOffset(e.getHostingEndAt()),
-					Kst.toOffset(e.getAppliedAt()), e.getTrafficPlanCode(),
-					billing == null ? null : billing.getEstimatedCost());
-		}).toList();
+					Kst.toOffset(e.getAppliedAt()), e.getTrafficPlanCode()))
+			.toList();
 	}
 
 	@Transactional(readOnly = true)
@@ -80,10 +67,6 @@ class EventReader {
 			.stream()
 			.map(c -> new EventResponses.CouponItem(c.getCouponId(), c.getName(), c.getDescription()))
 			.toList();
-		var billing = billings.findById(eventId)
-			.map(b -> new EventResponses.Billing(b.getAppliedHourlyPrice(), b.getAppliedHostingHourlyPrice(),
-					b.getEstimatedCost()))
-			.orElse(null);
 		var logs = statusLogs.findByEventIdOrderByChangedAtAscLogIdAsc(eventId)
 			.stream()
 			.map(l -> new EventResponses.LogItem(l.getStatusType(), l.getPrevStatus(), l.getNewStatus(),
@@ -95,7 +78,7 @@ class EventReader {
 				tenant.getContactName(),
 				new EventResponses.Status(e.getApplicationStatus(), e.getHostingStatus(), e.getEventStatus(),
 						e.getRejectReason(), ResultReader.state(e, summaries.findById(eventId).orElse(null))),
-				couponItems, jsonMapper.readTree(e.getLayoutConfig()), billing, domain(e, tenant), logs);
+				couponItems, jsonMapper.readTree(e.getLayoutConfig()), domain(e, tenant), logs);
 	}
 
 	/** Console EventReader와 같은 규칙: 승인됐고 만료 전일 때만 도메인을 보여 준다. */
