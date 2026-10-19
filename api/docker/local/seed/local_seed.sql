@@ -3,15 +3,7 @@
 INSERT INTO operator (operator_id, email, contact_name, password) VALUES
     (1, 'operator@tetra-operation.com', '홍길동', '$2a$10$okElfhEuxbaHWkowSCIryez9gAIoLsJ78Jxo9f/j1vYHXyif9Jlhu');
 
--- 요금제 · 템플릿 실제 값은 db-schema 시드 V2(계획서 Q3 · Q12)가 정해지면 그 값으로 바꾼다. 지금은 Console 테스트 seed와 같은 값.
-INSERT INTO traffic_plan (plan_code, max_capacity, hourly_price, hosting_hourly_price, is_visible) VALUES
-    ('S', 10000, 10000.00, 1000.00, 1),
-    ('M', 30000, 25000.00, 2000.00, 1),
-    ('L', 50000, 40000.00, 3000.00, 1),
-    ('XL', 100000, 70000.00, 5000.00, 0);
-
-INSERT INTO template (template_id, event_type, description, file_path) VALUES
-    (1, 'COUPON', '쿠폰 이벤트 앱', 'apps/coupon/');
+-- 요금제 · 템플릿은 db/migration/platform/V2(db-schema 시드)가 넣는다 — 금액은 화면 · API에 나오지 않는다(2026-10-19)
 
 -- 테넌트 2개 (스키마는 00-init.sh의 LOCAL_TENANT_IDS). 비밀번호는 아직 없다(= Console WF5 등록 직후) — docker/local/password-link.ps1로 설정
 INSERT INTO tenant (tenant_id, name, root_domain, created_at, email, password, contact_name, account_status, provisioning_status) VALUES

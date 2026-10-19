@@ -159,7 +159,7 @@ class ApplyApiTest extends IntegrationTest {
 		String json = application(Map.of(
 				"\"endAt\":\"" + iso(START.plusHours(2)) + "\"", "\"endAt\":\"" + iso(START.minusHours(1)) + "\"",
 				"\"hostingStartAt\":\"" + iso(START.minusHours(2)) + "\"", "\"hostingStartAt\":\"" + iso(START.plusMinutes(30)) + "\"",
-				"\"trafficPlanCode\":\"M\"", "\"trafficPlanCode\":\"XL\"",
+				"\"trafficPlanCode\":\"M\"", "\"trafficPlanCode\":\"HIDDEN\"",
 				"https://shop.example.com/event", "ftp://shop"));
 
 		apply(A, json, PNG).andExpect(status().isBadRequest())

@@ -23,12 +23,13 @@ class EventQueryApiTest extends IntegrationTest {
 		data.tenant(A, "A사", "ACTIVE", "READY");
 		mvc.perform(get("/api/portal/plans").cookie(loginCookie(A)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.length()").value(3)) // XL은 is_visible = 0
+			.andExpect(jsonPath("$.length()").value(4)) // HIDDEN은 is_visible = 0
 			.andExpect(jsonPath("$[0].planCode").value("S"))
 			.andExpect(jsonPath("$[0].maxCapacity").value(10000))
-			.andExpect(jsonPath("$[0].hourlyPrice").value(10000.00))
-			.andExpect(jsonPath("$[0].hostingHourlyPrice").value(1000.00))
-			.andExpect(jsonPath("$[2].planCode").value("L"));
+			.andExpect(jsonPath("$[3].planCode").value("XL"))
+			// 금액은 내보내지 않는다 (2026-10-19 결정)
+			.andExpect(jsonPath("$[0].hourlyPrice").doesNotExist())
+			.andExpect(jsonPath("$[0].hostingHourlyPrice").doesNotExist());
 		mvc.perform(get("/api/portal/plans")).andExpect(status().isUnauthorized());
 	}
 
@@ -48,11 +49,10 @@ class EventQueryApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$[0].applicationStatus").value("APPROVED"))
 			.andExpect(jsonPath("$[0].hostingStatus").value("PENDING"))
 			.andExpect(jsonPath("$[0].eventStatus").value("SCHEDULED"))
-			.andExpect(jsonPath("$[0].estimatedCost").value(189000.00))
+			.andExpect(jsonPath("$[0].estimatedCost").doesNotExist())
 			.andExpect(jsonPath("$[0].appliedAt").value("2026-10-02T10:00:00+09:00"))
 			.andExpect(jsonPath("$[1].eventId").value(1001))
-			.andExpect(jsonPath("$[1].hostingStatus").value(nullValue()))
-			.andExpect(jsonPath("$[1].estimatedCost").value(nullValue()));
+			.andExpect(jsonPath("$[1].hostingStatus").value(nullValue()));
 
 		mvc.perform(get("/api/portal/events").cookie(loginCookie(B)))
 			.andExpect(jsonPath("$.length()").value(1))
@@ -86,7 +86,7 @@ class EventQueryApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.coupons[1].name").value("무료 배송"))
 			.andExpect(jsonPath("$.layout.couponList.v").value("MIDDLE"))
 			.andExpect(jsonPath("$.layout.theme").value("WHITE"))
-			.andExpect(jsonPath("$.billing.estimatedCost").value(189000.00))
+			.andExpect(jsonPath("$.billing").doesNotExist())
 			.andExpect(jsonPath("$.domain").value("abcd2345." + A + "." + A + ".example.com"))
 			.andExpect(jsonPath("$.logs.length()").value(4))
 			.andExpect(jsonPath("$.logs[0].actor").value("TENANT"))
