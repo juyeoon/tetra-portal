@@ -1,26 +1,17 @@
-import { HOSTING_HOURLY, planMeta } from '@/mocks/pricing';
 import type { Plan } from '@/types';
 
-/** '2026.09.20 00:00' → Date */
-export function parseDateTime(dt: string) {
-  const [d, t = '00:00'] = dt.split(' ');
-  const [y, m, day] = d.split('.').map(Number);
-  const [hh, mm] = t.split(':').map(Number);
-  return new Date(y, m - 1, day, hh, mm);
+/** 10000 → '1만', 15000 → '1.5만', 5000 → '5,000' */
+export function formatCapacity(n: number) {
+  if (n < 10000) return n.toLocaleString('ko-KR');
+  const man = n / 10000;
+  return `${Number.isInteger(man) ? man : man.toFixed(1)}만`;
 }
 
-/** 호스팅 시간 — 시간 단위 올림 (23:59 종료는 다음 정시까지로 계산) */
-export function hostingHours(start: string, end: string) {
-  const ms = parseDateTime(end).getTime() - parseDateTime(start).getTime();
-  return ms > 0 ? Math.ceil(ms / 3_600_000) : 0;
+/** 'M 플랜 (3만 명)' — 요금제 목록을 아직 못 받았으면 코드만 */
+export function planLabel(planCode: string, plans?: Plan[]) {
+  const plan = plans?.find((p) => p.planCode === planCode);
+  return plan ? `${planCode} 플랜 (${formatCapacity(plan.maxCapacity)} 명)` : `${planCode} 플랜`;
 }
 
-/** 예상 비용 = 호스팅 시간 × (도메인 호스팅 단가 + 플랜 시간당 단가). 추가 트래픽 요금은 별도 산정 */
-export function estimateCost(plan: Plan, start: string, end: string) {
-  const hours = hostingHours(start, end);
-  return { hours, hosting: hours * HOSTING_HOURLY, plan: hours * planMeta[plan].hourly, total: hours * (HOSTING_HOURLY + planMeta[plan].hourly) };
-}
-
-export const planLabel = (plan: Plan) => `${plan} 플랜 (${planMeta[plan].short} 명)`;
-
-export const totalCouponStock = (coupons: { quantity: number }[]) => coupons.reduce((sum, c) => sum + (c.quantity || 0), 0);
+/** 'YYYY-MM-DDTHH:mm'(datetime-local 입력값, 한국 시각) → API 일시 'YYYY-MM-DDTHH:mm:00+09:00' */
+export const toApiDateTime = (local: string) => `${local}:00+09:00`;

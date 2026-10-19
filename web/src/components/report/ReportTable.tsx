@@ -5,10 +5,11 @@ import MailOutlineRoundedIcon from '@mui/icons-material/MailOutlineRounded';
 import TableCard from '@/components/common/TableCard';
 import { size } from '@/theme/theme';
 import type { Report } from '@/types';
+import { formatDate, formatDateRange, formatDateTime } from '@/utils/format';
 
 interface Props {
   reports: Report[];
-  onDownload: (report: Report) => void;
+  onDownload: (report: Report) => Promise<void>;
   onSendEmail: (report: Report) => Promise<void>;
 }
 
@@ -18,11 +19,24 @@ interface Props {
  */
 export default function ReportTable({ reports, onDownload, onSendEmail }: Props) {
   const [sendingId, setSendingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const send = async (r: Report) => {
-    setSendingId(r.id);
-    await onSendEmail(r);
-    setSendingId(null);
+    setSendingId(r.reportId);
+    try {
+      await onSendEmail(r);
+    } finally {
+      setSendingId(null);
+    }
+  };
+
+  const download = async (r: Report) => {
+    setDownloadingId(r.reportId);
+    try {
+      await onDownload(r);
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   return (
@@ -42,12 +56,12 @@ export default function ReportTable({ reports, onDownload, onSendEmail }: Props)
       </TableHead>
       <TableBody>
         {reports.map((r) => (
-          <TableRow key={r.id}>
+          <TableRow key={r.reportId}>
             <TableCell>{r.name}</TableCell>
-            <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.period}</TableCell>
-            <TableCell sx={{ whiteSpace: 'nowrap' }}>{r.createdAt}</TableCell>
+            <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDateRange(formatDateTime(r.periodStart), formatDateTime(r.periodEnd))}</TableCell>
+            <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(r.createdAt)}</TableCell>
             <TableCell align="center">
-              <Button size="small" variant="outlined" startIcon={<FileDownloadOutlinedIcon sx={{ fontSize: `${size.iconSm} !important` }} />} onClick={() => onDownload(r)}>
+              <Button size="small" variant="outlined" startIcon={<FileDownloadOutlinedIcon sx={{ fontSize: `${size.iconSm} !important` }} />} onClick={() => download(r)} disabled={downloadingId !== null}>
                 다운로드
               </Button>
             </TableCell>
@@ -59,7 +73,7 @@ export default function ReportTable({ reports, onDownload, onSendEmail }: Props)
                 onClick={() => send(r)}
                 disabled={sendingId !== null}
               >
-                {sendingId === r.id ? '전송 중…' : '이메일 전송'}
+                {sendingId === r.reportId ? '전송 중…' : '이메일 전송'}
               </Button>
             </TableCell>
           </TableRow>

@@ -3,27 +3,30 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { Box, Button, Link, TableBody, TableCell, TableHead, TableRow, TableSortLabel, Typography } from '@mui/material';
 import ChevronRightRoundedIcon from '@mui/icons-material/ChevronRightRounded';
 import EventNoteOutlinedIcon from '@mui/icons-material/EventNoteOutlined';
+import { listEvents } from '@/api/portal';
+import { useApi } from '@/api/useApi';
+import { ErrorView, LoadingView } from '@/components/common/LoadState';
 import StateMessage from '@/components/common/StateMessage';
 import StatusChip, { EmptyValue } from '@/components/common/StatusChip';
 import TableCard from '@/components/common/TableCard';
 import PageHeader from '@/components/layout/PageHeader';
-import { useAppData } from '@/store/AppDataContext';
 import { font, size, text, type } from '@/theme/theme';
-import type { PortalEvent } from '@/types';
-import { formatDateRange } from '@/utils/format';
+import type { EventSummary } from '@/types';
+import { formatDate, formatDateRange, formatDateTime } from '@/utils/format';
 import { applicationStatusMeta, eventStatusMeta, hostingStatusMeta } from '@/utils/status';
 
 type SortKey = 'period' | 'appliedAt';
 const sortLabel: Record<SortKey, string> = { period: '이벤트 기간', appliedAt: '신청일' };
-const sortValue: Record<SortKey, (e: PortalEvent) => string> = {
-  period: (e) => e.eventStart,
+// ISO +09:00 문자열이라 글자 비교 = 시각 비교
+const sortValue: Record<SortKey, (e: EventSummary) => string> = {
+  period: (e) => e.startAt,
   appliedAt: (e) => e.appliedAt,
 };
 
 /** UI-TP-05 이벤트 내역 - 목록 (로그인 후 홈) */
 export default function EventListPage() {
   const navigate = useNavigate();
-  const { events } = useAppData();
+  const { data: events = [], error, loading, reload } = useApi(listEvents, []);
   const [sort, setSort] = useState<{ key: SortKey; dir: 'asc' | 'desc' }>({ key: 'period', dir: 'desc' });
 
   const rows = useMemo(() => {
@@ -45,7 +48,11 @@ export default function EventListPage() {
     <>
       <PageHeader eyebrow="EVENTS" breadcrumbs={['이벤트 내역']} />
 
-      {events.length === 0 ? (
+      {loading && events.length === 0 ? (
+        <LoadingView />
+      ) : error ? (
+        <ErrorView message={error.message} onRetry={reload} />
+      ) : events.length === 0 ? (
         <StateMessage icon={<EventNoteOutlinedIcon />} title="신청한 이벤트가 없습니다" description="이벤트를 신청하면 이곳에서 진행 상태를 확인할 수 있습니다.">
           <Button variant="contained" onClick={() => navigate('/events/new')} sx={{ mt: 2 }}>
             이벤트 신청
@@ -74,11 +81,11 @@ export default function EventListPage() {
                 const hosting = e.hostingStatus && hostingStatusMeta[e.hostingStatus];
                 const status = e.eventStatus && eventStatusMeta[e.eventStatus];
                 return (
-                  <TableRow key={e.id} hover onClick={() => navigate(`/events/${e.id}`)} sx={{ cursor: 'pointer' }}>
+                  <TableRow key={e.eventId} hover onClick={() => navigate(`/events/${e.eventId}`)} sx={{ cursor: 'pointer' }}>
                     <TableCell>
                       <Link
                         component={RouterLink}
-                        to={`/events/${e.id}`}
+                        to={`/events/${e.eventId}`}
                         underline="none"
                         onClick={(ev) => ev.stopPropagation()}
                         sx={{ display: 'block', fontWeight: font.weight.semibold, color: text.primary }}
@@ -86,11 +93,11 @@ export default function EventListPage() {
                         {e.name}
                       </Link>
                       <Typography component="span" sx={{ ...type.monoSm, color: text.tertiary }}>
-                        {e.id}
+                        ID {e.eventId}
                       </Typography>
                     </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDateRange(e.eventStart, e.eventEnd)}</TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{e.appliedAt.slice(0, 10)}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDateRange(formatDateTime(e.startAt), formatDateTime(e.endAt))}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatDate(e.appliedAt)}</TableCell>
                     <TableCell>
                       <StatusChip label={app.label} tone={app.tone} />
                     </TableCell>
@@ -106,7 +113,7 @@ export default function EventListPage() {
           </TableCard>
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" sx={{ color: text.tertiary }}>
-              ※ 승인 전(신청됨·반려됨)에는 호스팅상태와 이벤트상태가 "-"로 표시됩니다.
+              ※ 승인 전(신청됨·승인 대기·신청 실패·반려됨)에는 호스팅상태와 이벤트상태가 "-"로 표시됩니다.
             </Typography>
             <Typography variant="body2" sx={{ color: text.tertiary }}>
               ※ 행을 클릭하면 상세 페이지로 이동합니다.

@@ -4,17 +4,19 @@ import ArrowBackRoundedIcon from '@mui/icons-material/ArrowBackRounded';
 import CopyButton from '@/components/common/CopyButton';
 import StatusChip, { EmptyValue } from '@/components/common/StatusChip';
 import { size, text, type } from '@/theme/theme';
-import type { PortalEvent } from '@/types';
-import { formatPeriod } from '@/utils/format';
-import { applicationStatusMeta } from '@/utils/status';
+import type { EventDetail } from '@/types';
+import { formatDateTime, formatPeriod } from '@/utils/format';
+import { applicationStatusMeta, eventStatusMeta, hostingStatusMeta } from '@/utils/status';
 
 /** 이벤트 상세 상단 요약 — 탭을 바꿔도 항상 보이는 영역 (UI-TP-06 ①) */
-export default function EventSummary({ event }: { event: PortalEvent }) {
-  const status = applicationStatusMeta[event.applicationStatus];
+export default function EventSummary({ event }: { event: EventDetail }) {
+  const status = applicationStatusMeta[event.status.applicationStatus];
+  const hosting = event.status.hostingStatus && hostingStatusMeta[event.status.hostingStatus];
+  const progress = event.status.eventStatus && eventStatusMeta[event.status.eventStatus];
   const facts = [
-    { label: '이벤트 ID', value: <Box sx={{ ...type.monoSm, wordBreak: 'break-all' }}>{event.id}</Box> },
-    { label: '이벤트 기간', value: formatPeriod(event.eventStart, event.eventEnd) },
-    { label: '호스팅 기간', value: formatPeriod(event.hostingStart, event.hostingEnd) },
+    { label: '이벤트 ID', value: <Box sx={{ ...type.monoSm, wordBreak: 'break-all' }}>ID {event.eventId}</Box> },
+    { label: '이벤트 기간', value: formatPeriod(formatDateTime(event.startAt), formatDateTime(event.endAt)) },
+    { label: '호스팅 기간', value: formatPeriod(formatDateTime(event.hostingStartAt), formatDateTime(event.hostingEndAt)) },
     {
       label: '도메인',
       value: event.domain ? (
@@ -26,7 +28,7 @@ export default function EventSummary({ event }: { event: PortalEvent }) {
         <Stack direction="row" spacing={0.75} alignItems="baseline">
           <EmptyValue />
           <Typography variant="body2" sx={{ color: text.tertiary }}>
-            승인 후 발급
+            {event.status.applicationStatus === 'APPROVED' ? '호스팅 종료' : '승인 후 발급'}
           </Typography>
         </Stack>
       ),
@@ -41,6 +43,8 @@ export default function EventSummary({ event }: { event: PortalEvent }) {
             {event.name}
           </Typography>
           <StatusChip label={status.label} tone={status.tone} en={status.en} />
+          {hosting && <StatusChip label={hosting.label} tone={hosting.tone} />}
+          {progress && <StatusChip label={progress.label} tone={progress.tone} />}
         </Stack>
         <Link
           component={RouterLink}

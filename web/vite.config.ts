@@ -17,5 +17,6 @@ export default defineConfig({
       },
     },
   },
-  server: { port: 5174 },
+  // 로컬 개발: /api 를 로컬 Portal API(api/ — ./gradlew bootRun, 8082)로 넘긴다. 운영은 같은 출처라 필요 없음
+  server: { port: 5174, proxy: { '/api': 'http://localhost:8082' } },
 });

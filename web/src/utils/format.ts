@@ -1,11 +1,27 @@
 export const formatNumber = (n: number) => n.toLocaleString('ko-KR');
 
-export const formatWon = (n: number) => `${formatNumber(n)}원`;
-
 export const formatPercent = (part: number, total: number, digits = 1) =>
   total === 0 ? '0%' : `${((part / total) * 100).toFixed(digits)}%`;
 
-/** '2026.10.03 00:00' ~ '2026.10.14 23:59' → '2026.10.03 00:00 ~ 10.14 23:59' (같은 해면 연도 생략) */
+/**
+ * API 일시(ISO +09:00, 예: '2026-11-27T20:00:00+09:00') → 'YYYY.MM.DD HH:mm'.
+ * 서버가 항상 한국 시각(+09:00)으로 보내므로 브라우저 시간대와 상관없이 글자를 그대로 잘라 쓴다.
+ */
+export function formatDateTime(iso: string | null | undefined) {
+  if (!iso) return '-';
+  return `${iso.slice(0, 10).replaceAll('-', '.')} ${iso.slice(11, 16)}`;
+}
+
+/** API 일시 → 'YYYY.MM.DD' */
+export const formatDate = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).replaceAll('-', '.') : '-');
+
+/** API 일시 → 'HH:mm' */
+export const formatTime = (iso: string) => iso.slice(11, 16);
+
+/** 0~1 비율 → '12.3%' */
+export const formatRate = (rate: number | null | undefined, digits = 1) => (rate == null ? '-' : `${(rate * 100).toFixed(digits)}%`);
+
+/** 표시 형식('YYYY.MM.DD HH:mm') 두 개 — '2026.10.03 00:00' ~ '2026.10.14 23:59' → '2026.10.03 00:00 ~ 10.14 23:59' (같은 해면 연도 생략) */
 export function formatPeriod(start: string, end: string) {
   const sameYear = start.slice(0, 4) === end.slice(0, 4);
   return `${start} ~ ${sameYear ? end.slice(5) : end}`;
@@ -25,21 +41,10 @@ export async function copyText(text: string) {
   }
 }
 
-/** 현재 시각 'YYYY.MM.DD HH:mm' */
-export function nowText() {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const d = new Date();
-  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-/** 브라우저에서 텍스트 파일 내려받기 */
-export function downloadText(filename: string, content: string, mime = 'text/csv;charset=utf-8') {
-  // 엑셀에서 한글이 깨지지 않도록 BOM 추가
-  const blob = new Blob(['\uFEFF', content], { type: mime });
-  const url = URL.createObjectURL(blob);
+/** 내려받기 링크(presigned URL) 열기 — 응답이 첨부 파일이라 현재 화면은 그대로 남는다 */
+export function openDownload(url: string) {
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.rel = 'noopener';
   a.click();
-  URL.revokeObjectURL(url);
 }

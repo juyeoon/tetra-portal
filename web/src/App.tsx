@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from '@/components/layout/AppLayout';
+import RequireAuth from '@/components/layout/RequireAuth';
 import LoginPage from '@/pages/auth/LoginPage';
 import PasswordSetupPage from '@/pages/auth/PasswordSetupPage';
 import EventApplyPage from '@/pages/events/apply/EventApplyPage';
@@ -16,7 +17,8 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/password/setup" element={<PasswordSetupPage />} />
 
-      {/* 포털 — 모니터링(UI-TP-11)은 기획 단계라 라우트 없음 */}
+      {/* 포털 — 로그인해야 들어온다. 모니터링(UI-TP-11)은 기획 단계라 라우트 없음 */}
+      <Route element={<RequireAuth />}>
       <Route element={<AppLayout />}>
         <Route index element={<Navigate to="/events" replace />} />
         <Route path="events">
@@ -27,6 +29,7 @@ export default function App() {
         <Route path="reports" element={<ReportPage />} />
         <Route path="notifications" element={<NotificationCenterPage />} />
         <Route path="settings" element={<SettingsPage />} />
+      </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
