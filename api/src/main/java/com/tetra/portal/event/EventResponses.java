@@ -9,6 +9,7 @@ import com.tetra.portal.domain.EventStatus;
 import com.tetra.portal.domain.EventType;
 import com.tetra.portal.domain.HostingStatus;
 import com.tetra.portal.domain.StatusType;
+import com.tetra.portal.result.ResultResponse;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import tools.jackson.databind.JsonNode;
@@ -42,7 +43,8 @@ public final class EventResponses {
 	}
 
 	public record Status(ApplicationStatus applicationStatus, HostingStatus hostingStatus, EventStatus eventStatus,
-			@Schema(description = "반려 사유 — REJECTED일 때만") String rejectReason) {
+			@Schema(description = "반려 사유 — REJECTED일 때만") String rejectReason,
+			@Schema(description = "결과 탭 상태 — 결과 API의 state와 같다. IN_PROGRESS면 결과 탭을 막는다") ResultResponse.State resultState) {
 	}
 
 	public record CouponItem(Long couponId, String name, String description) {

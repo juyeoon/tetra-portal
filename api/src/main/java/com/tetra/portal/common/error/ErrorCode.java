@@ -31,6 +31,7 @@ public enum ErrorCode {
 
 	// 409
 	TENANT_NOT_READY(HttpStatus.CONFLICT, "테넌트 환경 준비가 끝나지 않았습니다."),
+	RESULT_NOT_READY(HttpStatus.CONFLICT, "이벤트 결과가 아직 없습니다."),
 
 	// 410 — 비밀번호 설정 링크: 만료 · 이미 사용 · 위조를 구분하지 않는다(UI-TP-04 만료 화면 하나)
 	PASSWORD_LINK_INVALID(HttpStatus.GONE, "링크가 만료되었거나 이미 사용되었습니다."),

@@ -22,7 +22,8 @@ public record TetraProperties(
 		@Valid @NotNull Aws aws,
 		@Valid @NotNull Auth auth,
 		@Valid @NotNull PasswordLink passwordLink,
-		@Valid @NotNull @DefaultValue Apply apply) {
+		@Valid @NotNull @DefaultValue Apply apply,
+		@Valid @NotNull @DefaultValue Csv csv) {
 
 	public record Aws(@NotBlank String region) {
 	}
@@ -47,9 +48,18 @@ public record TetraProperties(
 	public record Apply(@NotNull @DefaultValue("PT10M") Duration staleAfter, @DefaultValue("true") boolean sweepEnabled) {
 	}
 
+	/** 다운로드 링크(presigned URL) 만료 — CSV_PRESIGN_TTL, Console과 같은 기본 5분. */
+	public record Csv(@NotNull @DefaultValue("PT5M") Duration presignTtl) {
+	}
+
 	/** 테넌트 콘텐츠 버킷 — WF5가 테넌트마다 만든다(계획서 2-1 ②). Portal은 이름만 만든다. */
 	public String storageBucket(String tenantId) {
 		return "tetra-storage-" + env + "-" + tenantId;
+	}
+
+	/** 테넌트 감사 로그 버킷 — 발급 이력 CSV · 리포트(플랜 D22). WF5가 만든다. */
+	public String auditBucket(String tenantId) {
+		return "tetra-audit-logs-" + env + "-" + tenantId;
 	}
 
 }

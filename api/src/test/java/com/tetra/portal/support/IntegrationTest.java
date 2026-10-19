@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.tetra.portal.auth.JwtTokenService;
 import com.tetra.portal.external.BannerStorage;
+import com.tetra.portal.external.DownloadUrlSigner;
 
 import jakarta.servlet.http.Cookie;
 
@@ -53,6 +54,9 @@ public abstract class IntegrationTest {
 	/** S3 대신. 기본은 성공(BannerStorage.key 그대로 돌려줌). */
 	@MockitoBean
 	protected BannerStorage banners;
+
+	@MockitoBean
+	protected DownloadUrlSigner urlSigner;
 
 	@BeforeEach
 	void resetData() {

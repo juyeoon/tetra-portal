@@ -70,3 +70,21 @@ INSERT INTO t_k7f2m9qx4b1t.event_status_log (event_id, tenant_id, status_type, p
     (1004, 'k7f2m9qx4b1t', 'APPLICATION', 'APPLIED', 'REJECTED', '2026-10-13 10:00:00', '이벤트 기간에 정기 점검이 있어 날짜를 옮겨 다시 신청해 주세요.', 1),
     (1005, 'k7f2m9qx4b1t', 'APPLICATION', NULL, 'APPLYING', '2026-10-15 13:00:00', NULL, NULL),
     (1005, 'k7f2m9qx4b1t', 'APPLICATION', 'APPLYING', 'APPLY_FAILED', '2026-10-15 13:05:00', '배너 업로드 실패', NULL);
+
+-- ---------------------------------------------------------------- 1003(추석 감사 쿠폰, 종료)의 결과 — 결과 탭 확인용 (state = READY)
+-- 집계 Job(발급 API)이 넣는 지표 + 발급 이력 저장 API가 채우는 값. CSV 경로는 키만(계획서 Q8)
+INSERT INTO t_k7f2m9qx4b1t.event_result_summary (event_id, tenant_id, session_count, ticket_count, peak_concurrent, peak_at, metrics_finalized_at,
+    total_stock, success_count, soldout_count, sellout_rate, history_file_path, history_generated_at) VALUES
+    (1003, 'k7f2m9qx4b1t', 14, 12, 9, '2026-09-25 10:01:00', '2026-09-25 11:10:00', 10000, 8, 2, 0.0008, 'issuance-history/1003.csv', '2026-09-25 13:10:00');
+
+INSERT INTO t_k7f2m9qx4b1t.issuance_history (event_id, tenant_id, user_id, ticket_number, session_issued_at, queue_entered_at, issued_at, result) VALUES
+    (1003, 'k7f2m9qx4b1t', 'user-001', 1, '2026-09-25 09:59:50.000', '2026-09-25 10:00:01.120', '2026-09-25 10:00:01.300', 'SUCCESS'),
+    (1003, 'k7f2m9qx4b1t', 'user-002', 2, '2026-09-25 09:59:52.000', '2026-09-25 10:00:01.450', '2026-09-25 10:00:01.600', 'SUCCESS'),
+    (1003, 'k7f2m9qx4b1t', 'user-003', 3, '2026-09-25 09:59:55.000', '2026-09-25 10:00:02.010', '2026-09-25 10:00:02.200', 'SUCCESS'),
+    (1003, 'k7f2m9qx4b1t', 'user-004', 4, '2026-09-25 09:59:58.000', '2026-09-25 10:00:03.500', '2026-09-25 10:00:03.700', 'FAILED_SOLDOUT'),
+    (1003, 'k7f2m9qx4b1t', 'user-005', 5, '2026-09-25 10:00:20.000', '2026-09-25 10:00:30.000', '2026-09-25 10:00:30.200', 'SUCCESS'),
+    (1003, 'k7f2m9qx4b1t', 'user-006', 6, '2026-09-25 10:00:40.000', '2026-09-25 10:01:05.000', '2026-09-25 10:01:05.300', 'SUCCESS'),
+    (1003, 'k7f2m9qx4b1t', 'user-007', 7, '2026-09-25 10:00:50.000', '2026-09-25 10:01:10.000', '2026-09-25 10:01:10.200', 'SUCCESS'),
+    (1003, 'k7f2m9qx4b1t', 'user-008', 8, '2026-09-25 10:01:20.000', '2026-09-25 10:01:40.000', '2026-09-25 10:01:40.100', 'FAILED_SOLDOUT'),
+    (1003, 'k7f2m9qx4b1t', 'user-009', 9, '2026-09-25 10:02:00.000', '2026-09-25 10:02:10.000', '2026-09-25 10:02:10.300', 'SUCCESS'),
+    (1003, 'k7f2m9qx4b1t', 'user-010', 10, '2026-09-25 10:03:00.000', '2026-09-25 10:03:30.000', '2026-09-25 10:03:30.200', 'SUCCESS');
