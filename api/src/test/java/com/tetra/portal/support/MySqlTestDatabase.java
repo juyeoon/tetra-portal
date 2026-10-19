@@ -11,6 +11,7 @@ import java.sql.Statement;
 import java.util.List;
 import java.util.stream.Stream;
 
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.testcontainers.mysql.MySQLContainer;
@@ -76,6 +77,8 @@ public final class MySqlTestDatabase {
 			st.execute("CREATE USER '" + APP_USER + "'@'%' IDENTIFIED BY '" + APP_PASSWORD + "'");
 			st.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON tetra_platform.* TO '" + APP_USER + "'@'%'");
 			st.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON `t\\_%`.* TO '" + APP_USER + "'@'%'");
+			root.setCatalog("tetra_platform");
+			ScriptUtils.executeSqlScript(root, new ClassPathResource("seed/platform_base.sql"));
 		}
 		catch (SQLException ex) {
 			throw new IllegalStateException("테스트 스키마 생성 실패", ex);

@@ -90,6 +90,145 @@ public final class TestData {
 		jdbc.update("DELETE FROM tetra_platform.tenant WHERE tenant_id = ?", tenantId);
 	}
 
+	// ---------------------------------------------------------------- event
+
+	/** event.layout_config 기본값(chk_event_layout_config 형식). */
+	public static final String LAYOUT_CONFIG = """
+			{"title":{"h":"CENTER","v":"TOP"},"banner":{"h":"CENTER","v":"TOP"},
+			 "couponList":{"h":"CENTER","v":"MIDDLE"},"issueButton":{"h":"CENTER","v":"BOTTOM"},"theme":"WHITE"}""";
+
+	public static final LocalDateTime FUTURE = LocalDateTime.now().plusDays(30).withHour(10).withMinute(0).withSecond(0).withNano(0);
+
+	/** registry + 테넌트 스키마 event를 같은 상태로 넣는다(앱 코드를 거치지 않음). */
+	public EventBuilder event(long eventId, String tenantId) {
+		return new EventBuilder(eventId, tenantId);
+	}
+
+	public final class EventBuilder {
+
+		private final long eventId;
+
+		private final String tenantId;
+
+		private String schemaTenantId;
+
+		private String rowTenantId;
+
+		private String name;
+
+		private String applicationStatus = "APPLIED";
+
+		private String hostingStatus;
+
+		private String eventStatus;
+
+		private String slug;
+
+		private String rejectReason;
+
+		private LocalDateTime appliedAt = BASE;
+
+		private LocalDateTime processedAt;
+
+		private LocalDateTime startAt = FUTURE;
+
+		private EventBuilder(long eventId, String tenantId) {
+			this.eventId = eventId;
+			this.tenantId = tenantId;
+			this.schemaTenantId = tenantId;
+			this.rowTenantId = tenantId;
+			this.name = "이벤트 " + eventId;
+		}
+
+		public EventBuilder name(String name) {
+			this.name = name;
+			return this;
+		}
+
+		public EventBuilder status(String applicationStatus) {
+			this.applicationStatus = applicationStatus;
+			return this;
+		}
+
+		public EventBuilder approved(String hostingStatus, String eventStatus, String slug) {
+			this.applicationStatus = "APPROVED";
+			this.hostingStatus = hostingStatus;
+			this.eventStatus = eventStatus;
+			this.slug = slug;
+			this.processedAt = appliedAt.plusHours(1);
+			return this;
+		}
+
+		public EventBuilder rejected(String reason) {
+			this.applicationStatus = "REJECTED";
+			this.rejectReason = reason;
+			this.processedAt = appliedAt.plusHours(1);
+			return this;
+		}
+
+		public EventBuilder appliedAt(LocalDateTime appliedAt) {
+			this.appliedAt = appliedAt;
+			return this;
+		}
+
+		/** event 행을 다른 테넌트 스키마에 넣는다 (교차 접근 시험). */
+		public EventBuilder inSchemaOf(String schemaTenantId) {
+			this.schemaTenantId = schemaTenantId;
+			return this;
+		}
+
+		/** event 행의 tenant_id를 다르게 넣는다 (이중 확인 시험). */
+		public EventBuilder rowTenantId(String rowTenantId) {
+			this.rowTenantId = rowTenantId;
+			return this;
+		}
+
+		public void insert() {
+			String banner = List.of("APPLYING", "APPLY_FAILED").contains(applicationStatus) ? null
+					: "assets/banners/" + eventId + "/banner.png";
+			LocalDateTime hostingStartAt = startAt.minusHours(2);
+			LocalDateTime endAt = startAt.plusHours(3);
+			LocalDateTime hostingEndAt = endAt.plusHours(2);
+			jdbc.update("""
+					INSERT INTO tetra_platform.event_registry (event_id, tenant_id, name, event_type, traffic_plan_code,
+					    hosting_start_at, start_at, applied_at, processed_at, application_status, event_status, hosting_status)
+					VALUES (?, ?, ?, 'COUPON', 'M', ?, ?, ?, ?, ?, ?, ?)""", eventId, tenantId, name, hostingStartAt,
+					startAt, appliedAt, processedAt, applicationStatus, eventStatus, hostingStatus);
+			jdbc.update("""
+					INSERT INTO t_%s.event (event_id, tenant_id, name, event_type, template_id, layout_config, banner_image_path,
+					    start_at, end_at, hosting_start_at, hosting_end_at, endpoint_url, traffic_plan_code, stock_count,
+					    slug, applied_at, processed_by, processed_at, reject_reason, application_status, hosting_status, event_status)
+					VALUES (?, ?, ?, 'COUPON', 1, ?, ?, ?, ?, ?, ?, 'https://shop.example.com/event', 'M', 10000,
+					    ?, ?, ?, ?, ?, ?, ?, ?)""".formatted(schemaTenantId), eventId, rowTenantId, name, LAYOUT_CONFIG,
+					banner, startAt, endAt, hostingStartAt, hostingEndAt, slug, appliedAt,
+					processedAt == null ? null : 1L, processedAt, rejectReason, applicationStatus, hostingStatus,
+					eventStatus);
+		}
+
+	}
+
+	public void coupon(String tenantId, long eventId, String name, String description) {
+		jdbc.update("INSERT INTO t_%s.coupon (event_id, tenant_id, name, description) VALUES (?, ?, ?, ?)"
+			.formatted(tenantId), eventId, tenantId, name, description);
+	}
+
+	public void billing(String tenantId, long eventId, String hourly, String hostingHourly, String estimated) {
+		jdbc.update("""
+				INSERT INTO t_%s.event_billing (event_id, tenant_id, applied_hourly_price, applied_hosting_hourly_price, estimated_cost)
+				VALUES (?, ?, ?, ?, ?)""".formatted(tenantId), eventId, tenantId, new java.math.BigDecimal(hourly),
+				new java.math.BigDecimal(hostingHourly), new java.math.BigDecimal(estimated));
+	}
+
+	public void statusLog(String tenantId, long eventId, String type, String prev, String next, LocalDateTime changedAt,
+			String detail, Long changedBy) {
+		jdbc.update("""
+				INSERT INTO t_%s.event_status_log (event_id, tenant_id, status_type, prev_status, new_status, changed_at, detail, changed_by)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)""".formatted(tenantId), eventId, tenantId, type, prev, next, changedAt,
+				detail, changedBy);
+	}
+
+	// ---------------------------------------------------------------- tenant
+
 	/** 비밀번호 없는 테넌트(Console WF5 등록 직후 모양). */
 	public void tenant(String tenantId, String name, String accountStatus, String provisioningStatus) {
 		jdbc.update("""

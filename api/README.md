@@ -7,7 +7,8 @@
 |---|---|---|
 | P0 | 뼈대 — 설정 · 오류 형식 · 스키마 멀티테넌시 · 화면 서빙 · 헬스 체크 · 시험 · 로컬 실행 | ✅ |
 | P1 | 인증 — 로그인 · 로그아웃 · 계정 정보 · 비밀번호 설정(Console 링크) | ✅ |
-| P2 ~ P6 | 조회 → 신청(WF1-1) → 결과 → 부가 → 배포 | 예정 |
+| P2 | 조회 — 요금제 · 이벤트 목록 · 상세 · 테넌트 격리 | ✅ |
+| P3 ~ P6 | 신청(WF1-1) → 결과 → 부가 → 배포 | 예정 |
 
 ## API (지금까지)
 
@@ -18,6 +19,9 @@
 | `GET /api/portal/me` | 쿠키 | 로그인한 계정(위와 같은 모양) |
 | `POST /api/portal/password/setup/verify` `{t, exp, sig}` | 공개 | 메일 링크 확인 → `{email}`. 만료 · 사용됨 · 위조는 모두 410 `PASSWORD_LINK_INVALID` |
 | `POST /api/portal/password/setup` `{t, exp, sig, password}` | 공개 | 비밀번호 8~64자 → 204. 같은 링크는 한 번만 |
+| `GET /api/portal/plans` | 쿠키 | 노출된 요금제(작은 것부터) `{planCode, maxCapacity, hourlyPrice, hostingHourlyPrice}` |
+| `GET /api/portal/events` | 쿠키 | 내 이벤트 목록(최근 신청 먼저) — 상태 3종 · 기간 · 요금제 · 예상 비용 |
+| `GET /api/portal/events/{eventId}` | 쿠키 | 상세 — 신청 내용 · 쿠폰 · 화면 구성(`layout` JSON) · 비용 · 도메인(승인 후, 만료 전) · 진행 기록(`actor`: TENANT · OPERATOR · SYSTEM). 다른 테넌트 이벤트는 404 |
 
 - 비밀번호 설정 링크는 Console이 만든다: `{Portal}/password/setup?t={tenant_id}&exp={epoch초}&sig={서명}`. 화면은 주소의 세 값을 그대로 본문에 담아 보낸다(확인도 POST — 서명이 접근 로그에 한 번 더 남지 않게).
 - 상태를 바꾸는 API는 JSON 본문만 받는다(그 밖은 415). CSRF 토큰 대신 SameSite=Strict 쿠키 + JSON 전용.
@@ -51,6 +55,7 @@ docker compose up -d --wait       # MySQL 3307 — 스키마 · 앱 계정 · se
 
 - 포트: 로컬은 **8082**(issuance-api 로컬이 8080 · 8081을 쓴다). 운영(ECS)은 8080.
 - 로컬 테넌트: `k7f2m9qx4b1t`(테넌트컴퍼니, `admin@tenant-company.com`) · `d4n8p2r6s0v1`(`owner@second-shop.com`) — 처음엔 비밀번호가 없다(Console 가입 직후와 같음). 아래로 설정한다.
+- 테넌트컴퍼니에는 상태별 샘플 이벤트 5건이 있다: 1001 신청 완료 · 1002 승인(배포 대기, 도메인 있음) · 1003 승인 후 종료 · 1004 반려(사유 있음) · 1005 신청 실패. seed를 바꿨으면 `docker compose down -v` → `up`(로컬 비밀번호도 지워진다).
 
 ### 로컬에서 비밀번호 설정 · 로그인
 
@@ -74,7 +79,9 @@ src/main/java/com/tetra/portal/
 ├─ config/        설정 · 보안 · 화면 서빙(SpaWebConfig) · API 문서 · 멀티테넌시 연결
 ├─ common/        오류 형식(error/) · KST 시간(time/) · DB 오류 판별
 ├─ tenancy/       스키마 라우팅 — TenantRouter.inTenant()만 테넌트 스키마로 들어간다
-└─ domain/        엔티티 — platform/(tetra_platform) · tenant/(t_{tenant_id}, P2부터)
+├─ plan/          요금제
+├─ event/         이벤트 목록 · 상세 (EventReader = 테넌트 스키마 읽기)
+└─ domain/        엔티티 — platform/(tetra_platform) · tenant/(t_{tenant_id})
 ```
 
 ### 지킬 것 (Console API와 같은 규칙)
