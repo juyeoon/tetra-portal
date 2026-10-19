@@ -37,8 +37,9 @@ class SchemaValidationTest {
 	@Test
 	void entitiesMatchDdl() {
 		// 컨텍스트가 떴다면 validate를 통과한 것
-		// platform: Tenant · TrafficPlan / tenant: Event · Coupon · EventBilling · EventStatusLog
-		assertThat(entityManagerFactory.getMetamodel().getEntities()).hasSize(6);
+		// platform: Tenant · TrafficPlan · EventRegistry · Template · TenantStatusLog
+		// tenant: Event · Coupon · EventBilling · EventStatusLog
+		assertThat(entityManagerFactory.getMetamodel().getEntities()).hasSize(9);
 	}
 
 }

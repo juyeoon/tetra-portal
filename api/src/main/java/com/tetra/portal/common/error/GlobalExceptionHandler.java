@@ -15,6 +15,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /** 오류를 ErrorResponse 형식으로 바꾼다. 500에는 내부 정보(SQL, 스택)를 넣지 않는다. */
@@ -63,6 +65,16 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
 	ResponseEntity<ErrorResponse> handleMethod(HttpRequestMethodNotSupportedException ex) {
 		return respond(ErrorCode.METHOD_NOT_ALLOWED, Map.of());
+	}
+
+	@ExceptionHandler(MaxUploadSizeExceededException.class)
+	ResponseEntity<ErrorResponse> handleTooLarge(MaxUploadSizeExceededException ex) {
+		return respond(ErrorCode.INVALID_INPUT, Map.of("banner", "2MB 이하 파일만 올릴 수 있습니다."));
+	}
+
+	@ExceptionHandler(MissingServletRequestPartException.class)
+	ResponseEntity<ErrorResponse> handleMissingPart(MissingServletRequestPartException ex) {
+		return respond(ErrorCode.INVALID_INPUT, Map.of(ex.getRequestPartName(), "필수 입력입니다."));
 	}
 
 	@ExceptionHandler(HttpMediaTypeNotSupportedException.class)

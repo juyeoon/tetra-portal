@@ -17,6 +17,10 @@ spring:
     time-zone: Asia/Seoul
   lifecycle:
     timeout-per-shutdown-phase: 20s   # ALB 등록 해제 30초 · 컨테이너 stopTimeout 30초 안에 (인프라 약속 3절)
+  servlet:
+    multipart:
+      max-file-size: 2MB      # 배너 상한 (계획서 Q4) — 넘으면 400 fields.banner
+      max-request-size: 3MB   # 배너 + 신청 JSON
 
 server:
   port: ${SERVER_PORT:8080}
@@ -53,3 +57,7 @@ tetra:
     jwt-secret: ${PORTAL_JWT_SECRET}
   password-link:
     hmac-secret: ${PASSWORD_LINK_HMAC_SECRET}
+  apply:
+    # 신청(WF1-1) 뒤 배너 업로드가 이 시간 넘게 끝나지 않으면(태스크 재시작 등) APPLY_FAILED로 정리 (계획서 Q4)
+    stale-after: PT10M
+    sweep-enabled: true

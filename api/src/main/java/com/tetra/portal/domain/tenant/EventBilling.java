@@ -39,6 +39,18 @@ public class EventBilling extends TenantScopedEntity {
 	protected EventBilling() {
 	}
 
+	/** 신청 때 단가를 고정해 둔다(요금제 단가가 나중에 바뀌어도 이 이벤트는 신청 때 값). */
+	public static EventBilling applied(Long eventId, String tenantId, BigDecimal hourlyPrice,
+			BigDecimal hostingHourlyPrice, BigDecimal estimatedCost) {
+		EventBilling b = new EventBilling();
+		b.eventId = eventId;
+		b.tenantId = tenantId;
+		b.appliedHourlyPrice = hourlyPrice;
+		b.appliedHostingHourlyPrice = hostingHourlyPrice;
+		b.estimatedCost = estimatedCost;
+		return b;
+	}
+
 	public Long getEventId() {
 		return eventId;
 	}
