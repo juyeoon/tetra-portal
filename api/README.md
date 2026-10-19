@@ -10,7 +10,8 @@
 | P2 | 조회 — 요금제 · 이벤트 목록 · 상세 · 테넌트 격리 | ✅ |
 | P3 | 신청(WF1-1) — 검사 · 접수(202) · 배너 비동기 업로드 · APPLIED / APPLY_FAILED · 테넌트 자동 활성화 · 멈춘 신청 정리 | ✅ |
 | P4 | 결과 — 결과 탭(판정 · 지표 · 분 단위 추이) · 발급 이력 CSV 다운로드 링크(presigned URL) | ✅ |
-| P5 ~ P6 | 부가(알림 · 리포트 · 설정) → 배포 | 예정 |
+| P5 | 부가 — 알림 · 리포트(링크 · 안내 메일) · 이메일 알림 설정 · 문의 메일 | ✅ (메일은 운영 SES 권한 P6) |
+| P6 | 배포 — CI · 35-web MR · dev 첫 배포 | 예정 |
 
 ## API (지금까지)
 
@@ -26,6 +27,10 @@
 | `POST /api/portal/events` (multipart) | 쿠키 | 신청 — `application` 파트(JSON, **Content-Type: application/json**) + `banner` 파트(PNG · JPEG ≤ 2MB) → 202 `{eventId, applicationStatus: APPLYING}`. 배너가 올라가면 APPLIED, 실패하면 APPLY_FAILED(원인은 진행 기록) — 상세로 확인. 검사 실패는 400 `fields`에 항목별 사유 |
 | `GET /api/portal/events/{eventId}/result` | 쿠키 | 결과 탭 — `state`(READY · AGGREGATING · IN_PROGRESS · END_FAILED)에 따라 지표 · 구성 · 분 단위 추이 / 실패 원인. Console 결과와 같은 판정 · 숫자 |
 | `GET /api/portal/events/{eventId}/result/history-csv` | 쿠키 | `{url, expiresAt}` — S3 presigned URL(5분). 열면 `issuance-history-{id}.csv`로 저장. READY 아니면 409 `RESULT_NOT_READY`. 로컬은 받을 수 없는 가짜 주소 |
+| `GET /api/portal/notifications` · `PATCH …/{id}/read` | 쿠키 | 알림 최신순 · 읽음 표시(204) |
+| `GET /api/portal/reports` · `GET …/{id}/download` · `POST …/{id}/email` | 쿠키 | 리포트 목록 · 다운로드 링크(presigned 5분) · 로그인 이메일로 안내 메일(204, SES 실패 503) |
+| `GET /api/portal/settings` · `PATCH …/email {enabled}` | 쿠키 | `{emailEnabled, slackAvailable: false}` |
+| `POST /api/portal/support-mail` `{from, subject, body}` | 공개 | 운영팀 주소(`MAIL_SUPPORT_TO`)로만, Reply-To = from → 204 / 503 |
 | `GET /api/portal/events/{eventId}` | 쿠키 | 상세 — 신청 내용 · 쿠폰 · 화면 구성(`layout` JSON) · 비용 · 도메인(승인 후, 만료 전) · 진행 기록(`actor`: TENANT · OPERATOR · SYSTEM). 다른 테넌트 이벤트는 404 |
 
 - 비밀번호 설정 링크는 Console이 만든다: `{Portal}/password/setup?t={tenant_id}&exp={epoch초}&sig={서명}`. 화면은 주소의 세 값을 그대로 본문에 담아 보낸다(확인도 POST — 서명이 접근 로그에 한 번 더 남지 않게).
@@ -58,7 +63,7 @@ docker compose up -d --wait       # MySQL 3307 — 스키마 · 앱 계정 · se
 | `curl localhost:8082/api/portal/me` | 401 `UNAUTHENTICATED` (로그인 전) |
 | `http://localhost:8082/swagger-ui.html` | API 문서 (`API_DOCS_ENABLED=true`일 때만) |
 
-- 로컬은 profile `local`(`.env`의 `SPRING_PROFILES_ACTIVE=local`) — AWS를 부르지 않고 배너를 `build/local-banners/{tenant_id}/assets/banners/{event_id}/`에 저장한다.
+- 로컬은 profile `local`(`.env`의 `SPRING_PROFILES_ACTIVE=local`) — AWS를 부르지 않는다. 배너는 `build/local-banners/{tenant_id}/assets/banners/{event_id}/`, 메일은 `build/local-mail/*.txt`에 파일로, 다운로드 링크는 받을 수 없는 가짜 주소.
 - 포트: 로컬은 **8082**(issuance-api 로컬이 8080 · 8081을 쓴다). 운영(ECS)은 8080.
 - 로컬 테넌트: `k7f2m9qx4b1t`(테넌트컴퍼니, `admin@tenant-company.com`) · `d4n8p2r6s0v1`(`owner@second-shop.com`) — 처음엔 비밀번호가 없다(Console 가입 직후와 같음). 아래로 설정한다.
 - 테넌트컴퍼니에는 상태별 샘플 이벤트 5건이 있다: 1001 신청 완료 · 1002 승인(배포 대기, 도메인 있음) · 1003 승인 후 종료(결과 · CSV 있음) · 1004 반려(사유 있음) · 1005 신청 실패. seed를 바꿨으면 `docker compose down -v` → `up`(로컬 비밀번호도 지워진다).
@@ -89,7 +94,8 @@ src/main/java/com/tetra/portal/
 ├─ event/         이벤트 목록 · 상세 (EventReader = 테넌트 스키마 읽기)
 │  └─ apply/      신청 WF1-1 — 검사(ApplyService) · 트랜잭션 a/b/c(ApplyWriter) · 비동기 업로드(BannerUploader) · 정리(StaleApplicationSweeper)
 ├─ result/        결과 탭 · 발급 이력 CSV 링크
-├─ external/      배너 저장 · 다운로드 링크 서명 — S3(운영) · 로컬 대체(local)
+├─ notification/  알림 · report/ 리포트 · settings/ 이메일 알림 · support/ 문의 메일
+├─ external/      배너 저장 · 감사 버킷 링크(AuditFileLinks) · 메일 — S3 · SES(운영) / 로컬 대체(local)
 └─ domain/        엔티티 — platform/(tetra_platform) · tenant/(t_{tenant_id})
 ```
 

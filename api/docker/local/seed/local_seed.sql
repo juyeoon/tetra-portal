@@ -88,3 +88,15 @@ INSERT INTO t_k7f2m9qx4b1t.issuance_history (event_id, tenant_id, user_id, ticke
     (1003, 'k7f2m9qx4b1t', 'user-008', 8, '2026-09-25 10:01:20.000', '2026-09-25 10:01:40.000', '2026-09-25 10:01:40.100', 'FAILED_SOLDOUT'),
     (1003, 'k7f2m9qx4b1t', 'user-009', 9, '2026-09-25 10:02:00.000', '2026-09-25 10:02:10.000', '2026-09-25 10:02:10.300', 'SUCCESS'),
     (1003, 'k7f2m9qx4b1t', 'user-010', 10, '2026-09-25 10:03:00.000', '2026-09-25 10:03:30.000', '2026-09-25 10:03:30.200', 'SUCCESS');
+
+-- ---------------------------------------------------------------- 알림 · 리포트 (화면 확인용)
+-- 알림은 Console(승인 INFO · 반려 WARNING)과 운영 자동화가 넣는다. category 값은 고도화 때 확정
+INSERT INTO t_k7f2m9qx4b1t.tenant_notification (tenant_id, event_id, category, priority, occurred_at, content, is_read) VALUES
+    ('k7f2m9qx4b1t', 1003, 'APPLICATION', 'INFO', '2026-09-11 09:00:00', '[추석 감사 쿠폰] 신청이 승인되었습니다.', 1),
+    ('k7f2m9qx4b1t', 1002, 'APPLICATION', 'INFO', '2026-10-06 10:00:00', '[가을 정기 세일 쿠폰] 신청이 승인되었습니다.', 0),
+    ('k7f2m9qx4b1t', 1004, 'APPLICATION', 'WARNING', '2026-10-13 10:00:00', '[연말 감사 쿠폰] 신청이 반려되었습니다. 사유: 이벤트 기간에 정기 점검이 있어 날짜를 옮겨 다시 신청해 주세요.', 0),
+    ('k7f2m9qx4b1t', NULL, 'SYSTEM', 'URGENT', '2026-10-15 09:00:00', '10월 20일 02:00~04:00 정기 점검이 있습니다.', 0);
+
+-- 리포트 파일은 감사 버킷(로컬에는 없음 — 다운로드 링크는 가짜 주소). 누가 만드는지는 확정 필요(계획서 Q6)
+INSERT INTO t_k7f2m9qx4b1t.tenant_report_meta (tenant_id, name, period_start, period_end, category, created_at, file_path) VALUES
+    ('k7f2m9qx4b1t', '2026년 9월 월간 리포트', '2026-09-01 00:00:00', '2026-09-30 23:59:59', 'MONTHLY', '2026-10-01 06:00:00', 'reports/2026-09.pdf');

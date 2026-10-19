@@ -37,6 +37,8 @@ dependencies {
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
 	// 배너 업로드(테넌트 콘텐츠 버킷) · 이후 CSV presigned URL
 	implementation 'software.amazon.awssdk:s3'
+	// 문의 메일 · 리포트 메일. Portal 태스크 역할의 SES 권한은 P6 인프라 MR에서 (계획서 7절)
+	implementation 'software.amazon.awssdk:sesv2'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 

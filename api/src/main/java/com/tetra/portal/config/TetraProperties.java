@@ -23,7 +23,9 @@ public record TetraProperties(
 		@Valid @NotNull Auth auth,
 		@Valid @NotNull PasswordLink passwordLink,
 		@Valid @NotNull @DefaultValue Apply apply,
-		@Valid @NotNull @DefaultValue Csv csv) {
+		@Valid @NotNull @DefaultValue Csv csv,
+		@Valid @NotNull @DefaultValue Mail mail,
+		@NotBlank @DefaultValue("http://localhost:5174") String publicUrl) {
 
 	public record Aws(@NotBlank String region) {
 	}
@@ -50,6 +52,15 @@ public record TetraProperties(
 
 	/** 다운로드 링크(presigned URL) 만료 — CSV_PRESIGN_TTL, Console과 같은 기본 5분. */
 	public record Csv(@NotNull @DefaultValue("PT5M") Duration presignTtl) {
+	}
+
+	/**
+	 * 메일(SES). from = 보내는 주소(MAIL_FROM, SES 인증 도메인 tetraops.cloud 주소여야 한다),
+	 * supportTo = 로그인 전 문의 메일을 받을 운영팀 주소(MAIL_SUPPORT_TO).
+	 * TODO(확정 필요, 계획서 Q13): 두 값 모두 임시 기본값 — supportTo는 화면 목업(mocks/account.ts) 값. SES 샌드박스라 받는 주소도 인증돼 있어야 한다.
+	 */
+	public record Mail(@NotBlank @DefaultValue("Tetra <no-reply@tetraops.cloud>") String from,
+			@NotBlank @DefaultValue("tetraops@gmail.com") String supportTo) {
 	}
 
 	/** 테넌트 콘텐츠 버킷 — WF5가 테넌트마다 만든다(계획서 2-1 ②). Portal은 이름만 만든다. */

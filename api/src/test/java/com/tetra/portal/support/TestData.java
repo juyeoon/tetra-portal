@@ -254,6 +254,19 @@ public final class TestData {
 				queueEnteredAt.minusSeconds(5), queueEnteredAt, queueEnteredAt.plusSeconds(1), result);
 	}
 
+	public long notification(String tenantId, Long eventId, String priority, LocalDateTime occurredAt, String content,
+			boolean read) {
+		jdbc.update("INSERT INTO t_%s.tenant_notification (tenant_id, event_id, category, priority, occurred_at, content, is_read) VALUES (?, ?, 'APPLICATION', ?, ?, ?, ?)"
+			.formatted(tenantId), tenantId, eventId, priority, occurredAt, content, read);
+		return jdbc.queryForObject("SELECT MAX(notification_id) FROM t_%s.tenant_notification".formatted(tenantId), Long.class);
+	}
+
+	public long report(String tenantId, String name, String filePath, LocalDateTime createdAt) {
+		jdbc.update("INSERT INTO t_%s.tenant_report_meta (tenant_id, name, period_start, period_end, category, created_at, file_path) VALUES (?, ?, ?, ?, 'MONTHLY', ?, ?)"
+			.formatted(tenantId), tenantId, name, BASE.withDayOfMonth(1), BASE.withDayOfMonth(30), createdAt, filePath);
+		return jdbc.queryForObject("SELECT MAX(report_id) FROM t_%s.tenant_report_meta".formatted(tenantId), Long.class);
+	}
+
 	// ---------------------------------------------------------------- read
 
 	public Map<String, Object> registry(long eventId) {

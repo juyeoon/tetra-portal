@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.tetra.portal.auth.JwtTokenService;
 import com.tetra.portal.external.BannerStorage;
 import com.tetra.portal.external.DownloadUrlSigner;
+import com.tetra.portal.external.MailGateway;
 
 import jakarta.servlet.http.Cookie;
 
@@ -58,12 +59,17 @@ public abstract class IntegrationTest {
 	@MockitoBean
 	protected DownloadUrlSigner urlSigner;
 
+	/** SES 대신. 기본은 성공. */
+	@MockitoBean
+	protected MailGateway mail;
+
 	@BeforeEach
 	void resetData() {
 		data = TestData.shared();
 		data.reset();
 		when(banners.put(anyString(), any(), any()))
 			.thenAnswer(inv -> BannerStorage.key(inv.getArgument(1), inv.getArgument(2)));
+		when(mail.send(any())).thenReturn(true);
 	}
 
 	/** 그 테넌트로 로그인한 쿠키. */
