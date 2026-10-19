@@ -73,7 +73,7 @@ export default function EventDetailPage() {
       </Tabs>
 
       {current === 'application' && <ApplicationContent event={event} plans={plans.data} tenant={{ name: account.companyName, id: account.tenantId }} />}
-      {current === 'guide' && <IntegrationGuide event={event} />}
+      {current === 'guide' && <IntegrationGuide event={event} tenantId={account.tenantId} />}
       {current === 'result' && <EventResultPanel eventId={event.eventId} />}
 
       <Box sx={{ mt: 5, display: 'flex', justifyContent: 'center' }}>
