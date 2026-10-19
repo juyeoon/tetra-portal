@@ -20,3 +20,5 @@ tetra:
     jwt-secret: test-portal-jwt-secret-0123456789abcdef
   password-link:
     hmac-secret: test-hmac-secret
+  apply:
+    sweep-enabled: false   # 시험은 정리 작업을 직접 부른다

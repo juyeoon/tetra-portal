@@ -34,6 +34,15 @@ public class Coupon extends TenantScopedEntity {
 	protected Coupon() {
 	}
 
+	public static Coupon of(Long eventId, String tenantId, String name, String description) {
+		Coupon c = new Coupon();
+		c.eventId = eventId;
+		c.tenantId = tenantId;
+		c.name = name;
+		c.description = description;
+		return c;
+	}
+
 	public Long getCouponId() {
 		return couponId;
 	}

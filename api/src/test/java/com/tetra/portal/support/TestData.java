@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -225,6 +226,43 @@ public final class TestData {
 				INSERT INTO t_%s.event_status_log (event_id, tenant_id, status_type, prev_status, new_status, changed_at, detail, changed_by)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)""".formatted(tenantId), eventId, tenantId, type, prev, next, changedAt,
 				detail, changedBy);
+	}
+
+	// ---------------------------------------------------------------- read
+
+	public Map<String, Object> registry(long eventId) {
+		return jdbc.queryForMap("SELECT * FROM tetra_platform.event_registry WHERE event_id = ?", eventId);
+	}
+
+	public Map<String, Object> eventRow(String tenantId, long eventId) {
+		return jdbc.queryForMap("SELECT * FROM t_" + tenantId + ".event WHERE event_id = ?", eventId);
+	}
+
+	public List<Map<String, Object>> statusLogs(String tenantId, long eventId) {
+		return jdbc.queryForList("SELECT * FROM t_" + tenantId + ".event_status_log WHERE event_id = ? ORDER BY log_id",
+				eventId);
+	}
+
+	public List<Map<String, Object>> tenantStatusLogs(String tenantId) {
+		return jdbc.queryForList("SELECT * FROM tetra_platform.tenant_status_log WHERE tenant_id = ? ORDER BY log_id",
+				tenantId);
+	}
+
+	public long count(String sql, Object... args) {
+		Long value = jdbc.queryForObject(sql, Long.class, args);
+		return value == null ? 0 : value;
+	}
+
+	/** 비동기 업로드 결과를 기다린다 — registry 신청 상태가 APPLYING이 아니게 될 때까지(최대 5초). */
+	public String awaitApplicationStatus(long eventId) throws InterruptedException {
+		for (int i = 0; i < 100; i++) {
+			String status = (String) registry(eventId).get("application_status");
+			if (!"APPLYING".equals(status)) {
+				return status;
+			}
+			Thread.sleep(50);
+		}
+		return "APPLYING";
 	}
 
 	// ---------------------------------------------------------------- tenant

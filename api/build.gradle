@@ -18,6 +18,13 @@ repositories {
 	mavenCentral()
 }
 
+dependencyManagement {
+	imports {
+		// AWS SDK v2 버전을 Console과 같은 BOM으로 맞춘다
+		mavenBom 'io.awspring.cloud:spring-cloud-aws-dependencies:4.2.0'
+	}
+}
+
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
@@ -28,6 +35,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	// 프런트용 API 문서(OpenAPI JSON + Swagger UI). API_DOCS_ENABLED로만 켠다
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'
+	// 배너 업로드(테넌트 콘텐츠 버킷) · 이후 CSV presigned URL
+	implementation 'software.amazon.awssdk:s3'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 

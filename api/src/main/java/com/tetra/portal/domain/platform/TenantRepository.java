@@ -17,6 +17,13 @@ public interface TenantRepository extends JpaRepository<Tenant, String> {
 	@Query("update Tenant t set t.password = :newHash where t.tenantId = :tenantId and t.password is null")
 	int setPasswordIfUnset(@Param("tenantId") String tenantId, @Param("newHash") String newHash);
 
+	/** 첫 신청 성공 때 자동 활성화 — INACTIVE일 때만 (조건부 UPDATE, 이미 ACTIVE면 0행). */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("""
+			update Tenant t set t.accountStatus = com.tetra.portal.domain.AccountStatus.ACTIVE
+			 where t.tenantId = :tenantId and t.accountStatus = com.tetra.portal.domain.AccountStatus.INACTIVE""")
+	int activateIfInactive(@Param("tenantId") String tenantId);
+
 	/** 재설정 링크(나중에) — 확인한 해시 그대로일 때만 (조건부 UPDATE). */
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query("update Tenant t set t.password = :newHash where t.tenantId = :tenantId and t.password = :currentHash")

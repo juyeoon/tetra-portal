@@ -1,6 +1,9 @@
 package com.tetra.portal.config;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 import jakarta.validation.Valid;
@@ -18,7 +21,8 @@ public record TetraProperties(
 		@NotBlank String env,
 		@Valid @NotNull Aws aws,
 		@Valid @NotNull Auth auth,
-		@Valid @NotNull PasswordLink passwordLink) {
+		@Valid @NotNull PasswordLink passwordLink,
+		@Valid @NotNull @DefaultValue Apply apply) {
 
 	public record Aws(@NotBlank String region) {
 	}
@@ -37,6 +41,15 @@ public record TetraProperties(
 		public String toString() {
 			return "PasswordLink[hmacSecret=****]";
 		}
+	}
+
+	/** 신청(WF1-1). staleAfter: 배너 업로드를 기다리다 APPLY_FAILED로 정리하는 시간. */
+	public record Apply(@NotNull @DefaultValue("PT10M") Duration staleAfter, @DefaultValue("true") boolean sweepEnabled) {
+	}
+
+	/** 테넌트 콘텐츠 버킷 — WF5가 테넌트마다 만든다(계획서 2-1 ②). Portal은 이름만 만든다. */
+	public String storageBucket(String tenantId) {
+		return "tetra-storage-" + env + "-" + tenantId;
 	}
 
 }

@@ -56,6 +56,20 @@ public class EventStatusLog extends TenantScopedEntity {
 	protected EventStatusLog() {
 	}
 
+	/** 신청 상태 변경 기록. Portal이 남기는 행은 changed_by가 없다(테넌트 · 시스템). */
+	public static EventStatusLog application(Long eventId, String tenantId, Enum<?> prevStatus, Enum<?> newStatus,
+			LocalDateTime changedAt, String detail) {
+		EventStatusLog log = new EventStatusLog();
+		log.eventId = eventId;
+		log.tenantId = tenantId;
+		log.statusType = StatusType.APPLICATION;
+		log.prevStatus = prevStatus == null ? null : prevStatus.name();
+		log.newStatus = newStatus.name();
+		log.changedAt = changedAt;
+		log.detail = detail;
+		return log;
+	}
+
 	public Long getLogId() {
 		return logId;
 	}

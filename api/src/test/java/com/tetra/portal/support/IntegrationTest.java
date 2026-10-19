@@ -1,5 +1,9 @@
 package com.tetra.portal.support;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -7,9 +11,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.tetra.portal.auth.JwtTokenService;
+import com.tetra.portal.external.BannerStorage;
 
 import jakarta.servlet.http.Cookie;
 
@@ -44,10 +50,16 @@ public abstract class IntegrationTest {
 	@Autowired
 	protected JwtTokenService tokens;
 
+	/** S3 대신. 기본은 성공(BannerStorage.key 그대로 돌려줌). */
+	@MockitoBean
+	protected BannerStorage banners;
+
 	@BeforeEach
 	void resetData() {
 		data = TestData.shared();
 		data.reset();
+		when(banners.put(anyString(), any(), any()))
+			.thenAnswer(inv -> BannerStorage.key(inv.getArgument(1), inv.getArgument(2)));
 	}
 
 	/** 그 테넌트로 로그인한 쿠키. */

@@ -106,6 +106,30 @@ public class Event extends TenantScopedEntity {
 	protected Event() {
 	}
 
+	/** 신청 접수(WF1-1 트랜잭션 a) — APPLYING, 배너 경로는 업로드 성공 뒤에 채운다(chk_event_banner). */
+	public static Event applying(Long eventId, String tenantId, String name, EventType eventType, Long templateId,
+			String layoutConfig, LocalDateTime startAt, LocalDateTime endAt, LocalDateTime hostingStartAt,
+			LocalDateTime hostingEndAt, String endpointUrl, String trafficPlanCode, Long stockCount,
+			LocalDateTime appliedAt) {
+		Event e = new Event();
+		e.eventId = eventId;
+		e.tenantId = tenantId;
+		e.name = name;
+		e.eventType = eventType;
+		e.templateId = templateId;
+		e.layoutConfig = layoutConfig;
+		e.startAt = startAt;
+		e.endAt = endAt;
+		e.hostingStartAt = hostingStartAt;
+		e.hostingEndAt = hostingEndAt;
+		e.endpointUrl = endpointUrl;
+		e.trafficPlanCode = trafficPlanCode;
+		e.stockCount = stockCount;
+		e.appliedAt = appliedAt;
+		e.applicationStatus = ApplicationStatus.APPLYING;
+		return e;
+	}
+
 	public Long getEventId() {
 		return eventId;
 	}
