@@ -153,7 +153,7 @@ class ExtrasApiTest extends IntegrationTest {
 
 		ArgumentCaptor<MailGateway.Mail> sent = ArgumentCaptor.forClass(MailGateway.Mail.class);
 		verify(mail).send(sent.capture());
-		assertThat(sent.getValue().to()).isEqualTo("tetraops@gmail.com");
+		assertThat(sent.getValue().to()).isEqualTo("tetra.ops.1@gmail.com");
 		assertThat(sent.getValue().replyTo()).isEqualTo("kim@shop.example.com");
 		assertThat(sent.getValue().subject()).isEqualTo("[Portal 문의] 비밀번호 문의 Bcc: evil@x.com")
 			.doesNotContain("\n");

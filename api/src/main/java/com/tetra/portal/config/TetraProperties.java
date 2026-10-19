@@ -57,10 +57,10 @@ public record TetraProperties(
 	/**
 	 * 메일(SES). from = 보내는 주소(MAIL_FROM, SES 인증 도메인 tetraops.cloud 주소여야 한다),
 	 * supportTo = 로그인 전 문의 메일을 받을 운영팀 주소(MAIL_SUPPORT_TO).
-	 * TODO(확정 필요, 계획서 Q13): 두 값 모두 임시 기본값 — supportTo는 화면 목업(mocks/account.ts) 값. SES 샌드박스라 받는 주소도 인증돼 있어야 한다.
+	 * supportTo = tetra.ops.1@gmail.com (2026-10-19 확정, 계획서 Q13). SES 샌드박스라 받는 주소도 인증돼 있어야 한다.
 	 */
 	public record Mail(@NotBlank @DefaultValue("Tetra <no-reply@tetraops.cloud>") String from,
-			@NotBlank @DefaultValue("tetraops@gmail.com") String supportTo) {
+			@NotBlank @DefaultValue("tetra.ops.1@gmail.com") String supportTo) {
 	}
 
 	/** 테넌트 콘텐츠 버킷 — WF5가 테넌트마다 만든다(계획서 2-1 ②). Portal은 이름만 만든다. */
