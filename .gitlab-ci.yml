@@ -1,0 +1,160 @@
+# portal CI/CD — 화면(web) + API(api) 한 이미지 (인프라 플랜 5-2 ①④ · Portal 계획서 P6)
+#   MR   : web(타입 검사 · 빌드) · api(단위 · 통합 테스트 — Testcontainers → Docker-in-Docker)
+#   main : 위 + jar(web/dist 포함) → 이미지(linux/amd64) → ECR tetra/portal:<커밋 SHA 7자리> → ECS 서비스 갱신(dev)
+#
+# Runner (인프라 런북 3-4 · GitLab 컨벤션 9절)
+#   general   : 일반 Runner — 화면 빌드 · jar (Docker 불필요)
+#   docker    : 빌드 Runner(tetra/app 전용, privileged DinD, 역할 ECR push만) — 통합 테스트 · 이미지
+#   protected : 보호 Runner(보호 브랜치 job만) — ECS 배포. main 은 보호 브랜치
+# AWS 키는 CI 변수에 넣지 않는다 — 각 Runner 의 인스턴스 역할을 쓴다.
+#
+# 배포는 태스크 정의 family 의 "최신 리비전"을 복사해 이미지만 바꾼다. 환경변수 · 금고(secrets) · 로그 설정은
+# Terraform(infra-aws 35-web)이 만든 리비전에서 오므로, 그쪽을 바꾸면 다음 배포부터 함께 반영된다.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS # MR 이 열린 브랜치는 MR 파이프라인만 (중복 방지)
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+stages: [test, package, build, deploy]
+
+variables:
+  AWS_REGION: ap-northeast-2
+  ECR_REGISTRY: 261806339876.dkr.ecr.ap-northeast-2.amazonaws.com
+  IMAGE_REPO: tetra/portal
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+  ECS_CLUSTER: tetra-dev
+  ECS_SERVICE: portal
+  TASK_FAMILY: tetra-dev-portal
+
+.main_only: &main_only
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+.dind:
+  tags: [docker]
+  services:
+    - docker:28.5-dind # 서비스 호스트 이름 = docker
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: /certs
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: /certs/client
+
+# ---------- test ----------
+web:
+  stage: test
+  tags: [general]
+  image: node:24.19-alpine
+  cache:
+    key:
+      files: [web/package-lock.json]
+    paths: [web/.npm/]
+  script:
+    - cd web
+    - npm ci --cache .npm --prefer-offline --no-audit --no-fund
+    - npm run build # tsc --noEmit && vite build
+  artifacts:
+    paths: [web/dist/]
+    expire_in: 1 day
+
+api-test:
+  extends: .dind
+  stage: test
+  image: eclipse-temurin:21-jdk
+  variables:
+    GRADLE_USER_HOME: $CI_PROJECT_DIR/.gradle-home
+    TESTCONTAINERS_HOST_OVERRIDE: docker # Testcontainers 가 띄운 MySQL 에 붙을 주소 = DinD 서비스
+  cache:
+    key:
+      files: [api/gradle/wrapper/gradle-wrapper.properties, api/build.gradle]
+    paths: [.gradle-home/caches/, .gradle-home/wrapper/]
+  script:
+    - cd api
+    - chmod +x gradlew
+    - ./gradlew --no-daemon test
+  artifacts:
+    when: always
+    reports:
+      junit: api/build/test-results/test/*.xml
+    expire_in: 7 days
+
+# ---------- package (main) — web/dist 를 넣은 app.jar ----------
+jar:
+  <<: *main_only
+  stage: package
+  tags: [general]
+  image: eclipse-temurin:21-jdk
+  needs: [web, api-test]
+  variables:
+    GRADLE_USER_HOME: $CI_PROJECT_DIR/.gradle-home
+  cache:
+    key:
+      files: [api/gradle/wrapper/gradle-wrapper.properties, api/build.gradle]
+    paths: [.gradle-home/caches/, .gradle-home/wrapper/]
+    policy: pull
+  script:
+    - test -f web/dist/index.html # 화면이 빠진 이미지를 만들지 않는다
+    - cd api
+    - chmod +x gradlew
+    - ./gradlew --no-daemon bootJar # processResources 가 ../web/dist 를 static/ 에 넣는다
+  artifacts:
+    paths: [api/build/libs/app.jar]
+    expire_in: 1 day
+
+# ---------- build (main) — 이미지 → ECR ----------
+# 잡 이름을 image 로 두면 최상위 예약어로 해석된다 → build-image
+build-image:
+  <<: *main_only
+  extends: .dind
+  stage: build
+  image: docker:28.5
+  needs: [jar]
+  before_script:
+    - apk add --no-cache aws-cli >/dev/null
+    - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+  script:
+    - |
+      if aws ecr describe-images --region "$AWS_REGION" --repository-name "$IMAGE_REPO" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+        echo "이미 있는 태그 $IMAGE_TAG — 빌드 건너뜀 (ECR IMMUTABLE)"
+        exit 0
+      fi
+    - docker build --platform linux/amd64 -t "$ECR_REGISTRY/$IMAGE_REPO:$IMAGE_TAG" api
+    - docker push "$ECR_REGISTRY/$IMAGE_REPO:$IMAGE_TAG"
+
+# ---------- deploy (main) — ECS 서비스 갱신 (dev) ----------
+deploy-dev:
+  <<: *main_only
+  stage: deploy
+  tags: [protected]
+  image: alpine:3.20
+  needs: [build-image]
+  resource_group: ecs-portal-dev # 배포가 동시에 두 개 돌지 않게
+  environment:
+    name: dev
+    url: https://portal.daran.cloud
+  before_script:
+    - apk add --no-cache aws-cli jq >/dev/null
+  script:
+    - IMAGE="$ECR_REGISTRY/$IMAGE_REPO:$IMAGE_TAG"
+    # family 최신 리비전(= Terraform 이 마지막으로 만든 설정 또는 직전 배포)을 복사하고 이미지만 바꾼다
+    - |
+      aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$TASK_FAMILY" --query taskDefinition \
+        | jq --arg img "$IMAGE" '.containerDefinitions[0].image = $img
+            | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)' \
+        > taskdef.json
+    - NEW_TD=$(aws ecs register-task-definition --region "$AWS_REGION" --cli-input-json file://taskdef.json --query taskDefinition.taskDefinitionArn --output text)
+    - echo "새 태스크 정의 $NEW_TD"
+    - aws ecs update-service --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --task-definition "$NEW_TD" >/dev/null
+    - aws ecs wait services-stable --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+    # 헬스체크에 실패하면 circuit breaker 가 이전 리비전으로 되돌리고도 "stable" 이 된다 → 실제로 새 리비전인지 확인
+    - |
+      CURRENT=$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)
+      if [ "$CURRENT" != "$NEW_TD" ]; then
+        echo "배포 실패 — 헬스체크를 통과하지 못해 이전 리비전($CURRENT)으로 되돌아갔다. CloudWatch /ecs/tetra-dev/portal 로그 확인"
+        exit 1
+      fi
+    - echo "배포 완료 — $IMAGE"
