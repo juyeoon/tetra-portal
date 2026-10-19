@@ -44,7 +44,8 @@ public class SecurityConfig {
 			.requestCache(AbstractHttpConfigurer::disable)
 			.authorizeHttpRequests(auth -> auth
 				.requestMatchers(HttpMethod.POST, "/api/portal/auth/login", "/api/portal/auth/logout").permitAll()
-				.requestMatchers(HttpMethod.POST, "/api/portal/password/setup", "/api/portal/password/setup/verify")
+				.requestMatchers(HttpMethod.POST, "/api/portal/password/setup", "/api/portal/password/setup/verify",
+						"/api/portal/support-mail")
 				.permitAll()
 				.requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
 				.requestMatchers("/api/**", "/actuator/**").authenticated()

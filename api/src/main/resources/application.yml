@@ -57,8 +57,13 @@ tetra:
     jwt-secret: ${PORTAL_JWT_SECRET}
   password-link:
     hmac-secret: ${PASSWORD_LINK_HMAC_SECRET}
+  public-url: ${APP_PUBLIC_URL:http://localhost:5174}   # 메일 본문의 Portal 주소 (ECS: https://portal.daran.cloud)
   csv:
     presign-ttl: ${CSV_PRESIGN_TTL:PT5M}   # 발급 이력 CSV · 리포트 다운로드 링크 만료
+  mail:
+    # TODO(확정 필요, 계획서 Q13): 임시 기본값. 운영 값은 ECS 환경변수로
+    from: ${MAIL_FROM:Tetra <no-reply@tetraops.cloud>}
+    support-to: ${MAIL_SUPPORT_TO:tetraops@gmail.com}
   apply:
     # 신청(WF1-1) 뒤 배너 업로드가 이 시간 넘게 끝나지 않으면(태스크 재시작 등) APPLY_FAILED로 정리 (계획서 Q4)
     stale-after: PT10M

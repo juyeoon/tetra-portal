@@ -24,6 +24,11 @@ public interface TenantRepository extends JpaRepository<Tenant, String> {
 			 where t.tenantId = :tenantId and t.accountStatus = com.tetra.portal.domain.AccountStatus.INACTIVE""")
 	int activateIfInactive(@Param("tenantId") String tenantId);
 
+	/** UI-TP-14 이메일 알림 켜기 · 끄기. */
+	@Modifying(flushAutomatically = true, clearAutomatically = true)
+	@Query("update Tenant t set t.emailNotificationEnabled = :enabled where t.tenantId = :tenantId")
+	int updateEmailNotification(@Param("tenantId") String tenantId, @Param("enabled") boolean enabled);
+
 	/** 재설정 링크(나중에) — 확인한 해시 그대로일 때만 (조건부 UPDATE). */
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query("update Tenant t set t.password = :newHash where t.tenantId = :tenantId and t.password = :currentHash")
