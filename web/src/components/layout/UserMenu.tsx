@@ -4,13 +4,14 @@ import { Avatar, Box, ButtonBase, Divider, ListItemIcon, Menu, MenuItem, Typogra
 import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownRounded';
 import LogoutOutlinedIcon from '@mui/icons-material/LogoutOutlined';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
-import { useAppData } from '@/store/AppDataContext';
+import { useAccount, useAuth } from '@/store/AuthContext';
 import { color, font, ink, radius, size, text, tones, type } from '@/theme/theme';
 
 /** 상단 우측 "테넌트컴퍼니 님 ▾" */
 export default function UserMenu() {
   const navigate = useNavigate();
-  const { account } = useAppData();
+  const account = useAccount();
+  const { logout } = useAuth();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   return (
@@ -51,8 +52,14 @@ export default function UserMenu() {
           </ListItemIcon>
           설정
         </MenuItem>
-        {/* TODO: 로그아웃 API 연동 */}
-        <MenuItem onClick={() => navigate('/login')} sx={{ color: tones.red.fg }}>
+        <MenuItem
+          onClick={async () => {
+            setAnchor(null);
+            await logout();
+            navigate('/login', { replace: true });
+          }}
+          sx={{ color: tones.red.fg }}
+        >
           <ListItemIcon sx={{ color: 'inherit' }}>
             <LogoutOutlinedIcon sx={{ fontSize: size.iconMd }} />
           </ListItemIcon>

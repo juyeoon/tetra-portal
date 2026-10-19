@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Box, Button, IconButton, InputAdornment, Link, Stack, TextField, Typography } from '@mui/material';
 import BlockRoundedIcon from '@mui/icons-material/BlockRounded';
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
@@ -7,7 +7,9 @@ import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
 import logoWhite from '@/assets/logo-white.png';
 import wavePattern from '@/assets/wave-pattern.png';
 import { APP_VERSION } from '@/mocks/account';
-import { useAppData } from '@/store/AppDataContext';
+import { errorMessage } from '@/api/client';
+import { useAuth } from '@/store/AuthContext';
+import { useToast } from '@/store/ToastContext';
 import { color, font, onNavy, radius, size, text, tones, type } from '@/theme/theme';
 import SupportMailDialog from './components/SupportMailDialog';
 
@@ -25,7 +27,11 @@ function InlineLabel({ children }: { children: ReactNode }) {
 /** UI-TP-01 로그인 · UI-TP-02 로그인 실패(같은 페이지 하단 배너). 회원가입 기능 없음 */
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login } = useAppData();
+  const location = useLocation();
+  const { status, login } = useAuth();
+  const toast = useToast();
+  /** 로그인 화면으로 보내지기 전 주소 (RequireAuth) */
+  const from = (location.state as { from?: string } | null)?.from ?? '/events';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -37,11 +43,18 @@ export default function LoginPage() {
     e.preventDefault();
     if (!email.trim() || !password || submitting) return;
     setSubmitting(true);
-    const ok = await login(email, password);
-    setSubmitting(false);
-    if (ok) navigate('/events');
-    else setFailed(true);
+    try {
+      if (await login(email, password)) navigate(from, { replace: true });
+      else setFailed(true);
+    } catch (err) {
+      toast(errorMessage(err), 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  // 이미 로그인돼 있으면(쿠키가 살아 있음) 바로 포털로
+  if (status === 'authenticated') return <Navigate to={from} replace />;
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(420px, 48%) 1fr' } }}>

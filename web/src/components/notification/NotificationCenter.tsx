@@ -6,24 +6,26 @@ import SectionTitle from '@/components/common/SectionTitle';
 import StateMessage from '@/components/common/StateMessage';
 import StatusChip from '@/components/common/StatusChip';
 import { color, font, line, onNavy, radius, size, text, tones, type } from '@/theme/theme';
-import type { NotificationPriority, PortalNotification, SlackSetting } from '@/types';
+import type { NotificationPriority, PortalNotification } from '@/types';
+import { formatDate, formatTime } from '@/utils/format';
 import { priorityMeta } from '@/utils/status';
 
 type Filter = 'ALL' | NotificationPriority | 'UNREAD';
 const FILTERS: { key: Filter; label: string }[] = [
   { key: 'ALL', label: '전체보기' },
-  { key: 'CRITICAL', label: '긴급' },
+  { key: 'URGENT', label: '긴급' },
   { key: 'WARNING', label: '경고' },
   { key: 'INFO', label: '정보' },
   { key: 'UNREAD', label: '안읽음' },
 ];
-const PRIORITIES: NotificationPriority[] = ['CRITICAL', 'WARNING', 'INFO'];
+const PRIORITIES: NotificationPriority[] = ['URGENT', 'WARNING', 'INFO'];
 
 const matches = (n: PortalNotification, f: Filter) => (f === 'ALL' ? true : f === 'UNREAD' ? !n.read : n.priority === f);
 
 interface Props {
   notifications: PortalNotification[];
-  slack: SlackSetting;
+  /** Slack 연동 제공 여부 — MVP 1차는 false("준비 중") */
+  slackAvailable: boolean;
   onRead: (id: number) => void;
   /** "설정 변경" 링크 (포털: 설정 화면) */
   settingsAction?: ReactNode;
@@ -33,12 +35,13 @@ interface Props {
  * 알림 센터 (UI-TP-13) — Slack 우선순위별 채널 · 필터 탭 5종 · 검색 · 알림 리스트(최신순).
  * 검색은 입력 즉시 반영, 항목을 클릭하면 읽음 처리한다. 콘솔 알림센터에서도 재사용할 수 있다.
  */
-export default function NotificationCenter({ notifications, slack, onRead, settingsAction }: Props) {
+export default function NotificationCenter({ notifications, slackAvailable, onRead, settingsAction }: Props) {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [query, setQuery] = useState('');
 
-  const sorted = useMemo(() => [...notifications].sort((a, b) => b.at.localeCompare(a.at)), [notifications]);
-  const visible = sorted.filter((n) => matches(n, filter) && n.message.toLowerCase().includes(query.trim().toLowerCase()));
+  // ISO +09:00 문자열이라 글자 비교 = 시각 비교
+  const sorted = useMemo(() => [...notifications].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)), [notifications]);
+  const visible = sorted.filter((n) => matches(n, filter) && n.content.toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
     <Stack spacing={3}>
@@ -47,7 +50,7 @@ export default function NotificationCenter({ notifications, slack, onRead, setti
         <SectionTitle
           action={
             <Stack direction="row" alignItems="center" spacing={1.5}>
-              {slack.connected ? <StatusChip label="Slack 연동됨" en="Connected" tone="green" /> : <StatusChip label="Slack 미연동" tone="grey" />}
+              <StatusChip label={slackAvailable ? 'Slack 미연동' : 'Slack 준비 중'} tone="grey" />
               {settingsAction}
             </Stack>
           }
@@ -60,13 +63,18 @@ export default function NotificationCenter({ notifications, slack, onRead, setti
             return (
               <Box key={p} sx={{ p: 2, borderRadius: radius.lg, bgcolor: color.surface, border: `1px solid ${line.soft}` }}>
                 <StatusChip label={meta.label} en={meta.en} tone={meta.tone} />
-                <Typography sx={{ mt: 1, ...type.monoSm, color: slack.connected && slack.channels[p] ? text.primary : text.tertiary, wordBreak: 'break-all' }}>
-                  {slack.connected && slack.channels[p] ? slack.channels[p] : '채널 미등록'}
+                <Typography sx={{ mt: 1, ...type.monoSm, color: text.tertiary, wordBreak: 'break-all' }}>
+                  {slackAvailable ? '채널 미등록' : '준비 중'}
                 </Typography>
               </Box>
             );
           })}
         </Box>
+        {!slackAvailable && (
+          <Typography variant="body2" sx={{ mt: 1.5, color: text.tertiary }}>
+            ※ Slack 연동은 준비 중입니다. 알림은 이 화면과, 설정에서 켠 경우 로그인 계정 이메일로 받습니다.
+          </Typography>
+        )}
       </Card>
 
       <Box>
@@ -129,9 +137,9 @@ export default function NotificationCenter({ notifications, slack, onRead, setti
             {visible.map((n) => {
               const meta = priorityMeta[n.priority];
               return (
-                <Box component="li" key={n.id} sx={{ borderBottom: `1px solid ${line.base}` }}>
+                <Box component="li" key={n.notificationId} sx={{ borderBottom: `1px solid ${line.base}` }}>
                   <ButtonBase
-                    onClick={() => !n.read && onRead(n.id)}
+                    onClick={() => !n.read && onRead(n.notificationId)}
                     sx={{ width: '100%', justifyContent: 'flex-start', textAlign: 'left', gap: 1.5, px: 1.5, py: 1.75, '&:hover': { bgcolor: color.card } }}
                   >
                     <Box
@@ -140,14 +148,14 @@ export default function NotificationCenter({ notifications, slack, onRead, setti
                     />
                     <StatusChip label={meta.label} tone={meta.tone} />
                     <Typography variant="body1" sx={{ flex: 1, minWidth: 0, fontWeight: n.read ? font.weight.regular : font.weight.semibold, color: n.read ? text.secondary : text.primary }}>
-                      {n.message}
+                      {n.content}
                     </Typography>
                     <Box sx={{ flexShrink: 0, textAlign: 'right' }}>
                       <Typography variant="body2" sx={{ color: text.tertiary }}>
-                        {n.at.slice(0, 10)}
+                        {formatDate(n.occurredAt)}
                       </Typography>
                       <Typography variant="body2" sx={{ color: text.tertiary }}>
-                        {n.at.slice(11)}
+                        {formatTime(n.occurredAt)}
                       </Typography>
                     </Box>
                   </ButtonBase>

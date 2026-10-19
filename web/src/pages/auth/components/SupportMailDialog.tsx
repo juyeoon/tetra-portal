@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField } from '@mui/material';
 import FormField from '@/components/common/FormField';
 import { SUPPORT_EMAIL } from '@/mocks/account';
-import { useAppData } from '@/store/AppDataContext';
+import { sendSupportMail } from '@/api/auth';
+import { errorMessage } from '@/api/client';
 import { useToast } from '@/store/ToastContext';
 import { isEmail } from '@/utils/validation';
 
@@ -15,7 +16,6 @@ interface Props {
 
 /** UI-TP-03 고객센터 — 비밀번호 문의용 이메일 작성 모달 */
 export default function SupportMailDialog({ open, onClose, defaultFrom = '' }: Props) {
-  const { sendSupportMail } = useAppData();
   const toast = useToast();
   const [from, setFrom] = useState('');
   const [subject, setSubject] = useState('');
@@ -38,10 +38,16 @@ export default function SupportMailDialog({ open, onClose, defaultFrom = '' }: P
     setTouched(true);
     if (!canSend) return;
     setSending(true);
-    await sendSupportMail({ from: from.trim(), subject: subject.trim(), body: body.trim() });
-    setSending(false);
-    toast('문의 메일을 보냈습니다. 답변은 입력하신 이메일로 받을 수 있습니다.');
-    onClose();
+    try {
+      await sendSupportMail({ from: from.trim(), subject: subject.trim(), body: body.trim() });
+      toast('문의 메일을 보냈습니다. 답변은 입력하신 이메일로 받을 수 있습니다.');
+      onClose();
+    } catch (e) {
+      // 실패(메일 발송 503 등)면 쓴 내용을 지우지 않고 창을 그대로 둔다
+      toast(errorMessage(e), 'error');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (

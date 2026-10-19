@@ -4,12 +4,11 @@ import {
   Button,
   ButtonBase,
   Card,
-  Checkbox,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControlLabel,
   IconButton,
   Link,
   Stack,
@@ -24,15 +23,20 @@ import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import SectionTitle from '@/components/common/SectionTitle';
 import StatusChip from '@/components/common/StatusChip';
-import { HOSTING_HOURLY, PLANS, planMeta } from '@/mocks/pricing';
 import { color, font, line, radius, size, text, tones, type } from '@/theme/theme';
-import { formatNumber, formatWon } from '@/utils/format';
+import type { Plan } from '@/types';
+import { formatCapacity } from '@/utils/event';
+import { formatNumber } from '@/utils/format';
 import { eventTypeLabel } from '@/utils/status';
 import { isHttpUrl } from '@/utils/validation';
-import { MAX_COUPONS, emptyCoupon, infoErrors, parseQuantity, type ApplyDraft } from './draft';
+import { BANNER_TYPES, MAX_BANNER_BYTES, MAX_COUPONS, MAX_STOCK, emptyCoupon, infoErrors, type ApplyDraft } from './draft';
 
 interface Props {
   draft: ApplyDraft;
+  /** GET /plans — 받기 전 undefined */
+  plans?: Plan[];
+  plansError?: string;
+  onRetryPlans: () => void;
   onChange: (patch: Partial<ApplyDraft>) => void;
   onPrev: () => void;
   onNext: () => void;
@@ -98,16 +102,17 @@ function readImageSize(file: File) {
 }
 
 /** UI-TP-08 이벤트 신청 - Tab2 (이벤트 정보) */
-export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
+export default function InfoStep({ draft, plans, plansError, onRetryPlans, onChange, onPrev, onNext }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [limitOpen, setLimitOpen] = useState(false);
   const [planInfoOpen, setPlanInfoOpen] = useState(false);
   const [urlChecked, setUrlChecked] = useState(false);
+  /** 고른 파일이 형식 · 크기 조건에 맞지 않을 때 */
+  const [bannerError, setBannerError] = useState<string | null>(null);
 
   const errors = infoErrors(draft);
   const canNext = Object.keys(errors).length === 0;
   const isCoupon = draft.type === 'COUPON';
-  const totalStock = draft.coupons.reduce((sum, c) => sum + parseQuantity(c.quantity), 0);
   const urlValid = isHttpUrl(draft.endpointUrl);
   const eventPeriodFilled = !!(draft.eventStart && draft.eventEnd);
   const hostingPeriodFilled = !!(draft.hostingStart && draft.hostingEnd);
@@ -124,10 +129,41 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    // TODO: 배너 이미지 업로드 API 연동 (현재는 파일 이름·크기만 보관)
+    // 파일은 신청할 때 함께 보낸다(서버가 형식 · 크기를 다시 검사). 여기서는 먼저 걸러 준다
+    if (!BANNER_TYPES.includes(file.type)) {
+      setBannerError('PNG 또는 JPG 파일만 올릴 수 있습니다.');
+      return;
+    }
+    if (file.size > MAX_BANNER_BYTES) {
+      setBannerError('2MB 이하 파일만 올릴 수 있습니다.');
+      return;
+    }
+    setBannerError(null);
     const { width, height } = await readImageSize(file);
-    onChange({ banner: { name: file.name, width, height } });
+    onChange({ banner: file, bannerSize: width ? { width, height } : null });
   };
+
+  // 총 발급 재고 — 이벤트 하나에 하나 (쿠폰별 수량 없음, 계획서 5-5)
+  const stockField = (
+    <Box>
+      <Label required htmlFor="stock-count">
+        총 발급 재고
+      </Label>
+      <TextField
+        id="stock-count"
+        placeholder="0"
+        value={draft.stock ? formatNumber(Number(draft.stock)) : ''}
+        onChange={(e) => onChange({ stock: e.target.value.replace(/[^\d]/g, '').slice(0, 9) })}
+        error={draft.stock !== '' && !!errors.stock}
+        slotProps={{ htmlInput: { inputMode: 'numeric', style: { textAlign: 'right' } }, input: { endAdornment: <Typography variant="body2" sx={{ color: text.tertiary, ml: 0.5 }}>매</Typography> } }}
+        sx={{ width: { xs: '100%', sm: 240 } }}
+      />
+      <Note>
+        {isCoupon ? '등록한 쿠폰 전체에 공통으로 적용되는 재고입니다 (쿠폰별 수량 없음)' : '선착순으로 발급할 전체 수량입니다'} · 최대 {formatNumber(MAX_STOCK)}매
+      </Note>
+      <ErrorText show={draft.stock !== ''}>{errors.stock}</ErrorText>
+    </Box>
+  );
 
   // URL 형식만 검증 — 실제 접속 여부는 확인하지 않는다
   const checkUrl = () => {
@@ -186,7 +222,7 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
                 onEnd={(v) => onChange({ hostingEnd: v })}
                 error={hostingPeriodFilled && !!errors.hostingPeriod}
               />
-              <Note>도메인 호스팅 시간(시간 단위)만큼 이벤트 비용에 포함됩니다 · 시간당 {formatWon(HOSTING_HOURLY)}</Note>
+              <Note>도메인 호스팅 시간(시간 단위)만큼 이벤트 비용에 포함됩니다 · 한국 시각 기준</Note>
               <ErrorText show={hostingPeriodFilled}>{errors.hostingPeriod}</ErrorText>
             </Box>
             <Box>
@@ -197,14 +233,17 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
                 </Button>
                 <TextField
                   fullWidth
-                  value={draft.banner ? `${draft.banner.name}${draft.banner.width ? ` (${draft.banner.width}×${draft.banner.height})` : ''}` : ''}
+                  value={draft.banner ? `${draft.banner.name}${draft.bannerSize ? ` (${draft.bannerSize.width}×${draft.bannerSize.height})` : ''}` : ''}
+                  error={!!bannerError}
                   placeholder="선택된 파일 없음"
                   slotProps={{ htmlInput: { readOnly: true, 'aria-label': '선택된 배너 파일' } }}
                 />
                 <input ref={fileRef} type="file" accept="image/png,image/jpeg" hidden onChange={onFile} />
               </Stack>
-              <Note>권장 크기 1200×420 · PNG, JPG · 대기열·이벤트 화면 상단에 노출됩니다</Note>
+              <Note>권장 크기 1200×420 · PNG, JPG · 2MB 이하 · 대기열·이벤트 화면 상단에 노출됩니다</Note>
+              <ErrorText show={!!bannerError}>{bannerError ?? undefined}</ErrorText>
             </Box>
+            {!isCoupon && stockField}
           </Stack>
         </Card>
 
@@ -221,8 +260,8 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
               발급할 쿠폰 정보
             </SectionTitle>
 
-            <Box sx={{ display: { xs: 'none', sm: 'grid' }, gridTemplateColumns: '1fr 2fr 140px 36px', gap: 1, mb: 1, px: 0.5 }}>
-              {['쿠폰 이름', 'Description (화면 노출 문구)', '발급 매수', ''].map((h) => (
+            <Box sx={{ display: { xs: 'none', sm: 'grid' }, gridTemplateColumns: '1fr 2fr 36px', gap: 1, mb: 1, px: 0.5 }}>
+              {['쿠폰 이름', 'Description (화면 노출 문구)', ''].map((h) => (
                 <Typography key={h} variant="body2" sx={{ color: text.tertiary }}>
                   {h}
                 </Typography>
@@ -230,7 +269,7 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
             </Box>
             <Stack spacing={1}>
               {draft.coupons.map((c, i) => (
-                <Box key={i} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 36px', sm: '1fr 2fr 140px 36px' }, gap: 1, alignItems: 'center' }}>
+                <Box key={i} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 36px', sm: '1fr 2fr 36px' }, gap: 1, alignItems: 'center' }}>
                   <TextField
                     size="small"
                     placeholder="예: 10% 할인 쿠폰"
@@ -247,19 +286,11 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
                     slotProps={{ htmlInput: { 'aria-label': `쿠폰 ${i + 1} Description` } }}
                     sx={{ gridColumn: { xs: '1 / 2', sm: 'auto' }, gridRow: { xs: 2, sm: 'auto' } }}
                   />
-                  <TextField
-                    size="small"
-                    placeholder="0"
-                    value={c.quantity ? formatNumber(Number(c.quantity)) : ''}
-                    onChange={(e) => setCoupon(i, { quantity: e.target.value.replace(/[^\d]/g, '').slice(0, 9) })}
-                    slotProps={{ htmlInput: { inputMode: 'numeric', 'aria-label': `쿠폰 ${i + 1} 발급 매수`, style: { textAlign: 'right' } }, input: { endAdornment: <Typography variant="body2" sx={{ color: text.tertiary, ml: 0.5 }}>매</Typography> } }}
-                    sx={{ gridColumn: { xs: '1 / 2', sm: 'auto' }, gridRow: { xs: 3, sm: 'auto' } }}
-                  />
                   <IconButton
                     aria-label={`쿠폰 ${i + 1} 삭제`}
                     onClick={() => onChange({ coupons: draft.coupons.filter((_, j) => j !== i) })}
                     disabled={draft.coupons.length === 1}
-                    sx={{ gridColumn: { xs: 2, sm: 'auto' }, gridRow: { xs: '1 / 4', sm: 'auto' }, '&:hover': { color: tones.red.fg, bgcolor: tones.red.bg } }}
+                    sx={{ gridColumn: { xs: 2, sm: 'auto' }, gridRow: { xs: '1 / 3', sm: 'auto' }, '&:hover': { color: tones.red.fg, bgcolor: tones.red.bg } }}
                   >
                     <CloseRoundedIcon sx={{ fontSize: size.iconMd }} />
                   </IconButton>
@@ -267,17 +298,11 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
               ))}
             </Stack>
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" spacing={1} sx={{ mt: 2, px: 2, py: 1.5, borderRadius: radius.md, bgcolor: color.pointTint }}>
-              <Typography variant="body1">
-                총 발급 재고 = {draft.coupons.map((c) => formatNumber(parseQuantity(c.quantity))).join(' + ')} ={' '}
-                <Box component="span" sx={{ fontWeight: font.weight.bold }}>
-                  {formatNumber(totalStock)}매
-                </Box>
-              </Typography>
-              <Typography variant="body2" sx={{ color: text.secondary }}>
-                쿠폰 {draft.coupons.length}종 / 최대 {MAX_COUPONS}종
-              </Typography>
-            </Stack>
+            <Typography variant="body2" sx={{ mt: 1, textAlign: 'right', color: text.secondary }}>
+              쿠폰 {draft.coupons.length}종 / 최대 {MAX_COUPONS}종 · 위에서부터 이벤트 화면에 노출
+            </Typography>
+            <ErrorText show={draft.coupons.some((c) => c.name || c.description)}>{errors.coupons}</ErrorText>
+            <Box sx={{ mt: 3 }}>{stockField}</Box>
           </Card>
         )}
 
@@ -287,8 +312,20 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
           <Stack spacing={3}>
             <Box>
               <Label required>트래픽 수용 인원</Label>
-              <Box role="radiogroup" aria-label="트래픽 수용 인원 플랜" sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' } }}>
-                {PLANS.map((p) => {
+              {plansError ? (
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <Typography variant="body2" sx={{ color: tones.red.fg }}>
+                    요금제를 불러오지 못했습니다. {plansError}
+                  </Typography>
+                  <Button size="small" variant="outlined" onClick={onRetryPlans}>
+                    다시 시도
+                  </Button>
+                </Stack>
+              ) : !plans ? (
+                <CircularProgress size={24} aria-label="요금제 불러오는 중" />
+              ) : (
+              <Box role="radiogroup" aria-label="트래픽 수용 인원 플랜" sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: `repeat(${Math.min(plans.length, 4)}, 1fr)` } }}>
+                {plans.map(({ planCode: p, maxCapacity }) => {
                   const selected = draft.plan === p;
                   return (
                     <ButtonBase
@@ -307,26 +344,22 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
                       }}
                     >
                       <Typography variant="subtitle1" sx={{ color: selected ? color.pointDeep : text.primary }}>
-                        {p} · {planMeta[p].short}
+                        {p} · {formatCapacity(maxCapacity)}
                       </Typography>
                       <Typography variant="body2" sx={{ color: text.tertiary }}>
-                        시간당 {formatWon(planMeta[p].hourly)}
+                        동시 접속 {formatNumber(maxCapacity)}명
                       </Typography>
                     </ButtonBase>
                   );
                 })}
               </Box>
+              )}
               <Note>
                 선택한 규모를 초과하면 추가요금(extra charge)이 발생할 수 있습니다.{' '}
                 <Link component="button" type="button" onClick={() => setPlanInfoOpen(true)} sx={{ ...type.caption }}>
                   자세히보기
                 </Link>
               </Note>
-              <FormControlLabel
-                sx={{ mt: 1 }}
-                control={<Checkbox checked={draft.extraTraffic} onChange={(e) => onChange({ extraTraffic: e.target.checked })} />}
-                label={<Typography variant="body1">추가 트래픽 산정 포함 (예상 트래픽을 운영자가 별도로 산정)</Typography>}
-              />
             </Box>
 
             <Box>
@@ -411,18 +444,15 @@ export default function InfoStep({ draft, onChange, onPrev, onNext }: Props) {
         <DialogTitle>트래픽 수용 인원 플랜</DialogTitle>
         <DialogContent>
           <Stack spacing={1}>
-            {PLANS.map((p) => (
-              <Stack key={p} direction="row" justifyContent="space-between" sx={{ py: 1, borderBottom: `1px solid ${line.base}` }}>
-                <Stack direction="row" spacing={1} alignItems="center">
-                  <StatusChip label={p} tone="grey" />
-                  <Typography variant="body1">동시 접속 {formatNumber(planMeta[p].capacity)}명</Typography>
-                </Stack>
-                <Typography variant="body1">시간당 {formatWon(planMeta[p].hourly)}</Typography>
+            {(plans ?? []).map((p) => (
+              <Stack key={p.planCode} direction="row" spacing={1} alignItems="center" sx={{ py: 1, borderBottom: `1px solid ${line.base}` }}>
+                <StatusChip label={p.planCode} tone="grey" />
+                <Typography variant="body1">동시 접속 {formatNumber(p.maxCapacity)}명</Typography>
               </Stack>
             ))}
           </Stack>
           <Typography variant="body2" sx={{ mt: 2, color: text.secondary }}>
-            선택한 규모를 넘는 접속이 발생하면 자동으로 대기열이 적용되며, 초과 사용분에 추가요금(extra charge)이 발생할 수 있습니다. 가격은 계획 기준이며 확정 시 변경될 수 있습니다.
+            선택한 규모를 넘는 접속이 발생하면 자동으로 대기열이 적용되며, 초과 사용분에 추가요금(extra charge)이 발생할 수 있습니다.
           </Typography>
         </DialogContent>
         <DialogActions>

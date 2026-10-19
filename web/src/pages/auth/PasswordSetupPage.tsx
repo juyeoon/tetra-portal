@@ -1,12 +1,14 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Alert, Box, Button, Dialog, DialogContent, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogContent, Stack, TextField, Typography } from '@mui/material';
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
 import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUncheckedRounded';
 import logo from '@/assets/logo-navy.png';
 import FormField from '@/components/common/FormField';
-import { useAppData } from '@/store/AppDataContext';
+import { setupPassword, verifyPasswordLink, type PasswordLink } from '@/api/auth';
+import { ApiError, errorMessage } from '@/api/client';
+import { useToast } from '@/store/ToastContext';
 import { color, font, radius, size, text, tones, type } from '@/theme/theme';
 
 /** 포털 메뉴 없이 단독 페이지 */
@@ -29,19 +31,48 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-/** UI-TP-04 비밀번호 설정 — 이메일로 받은 비밀번호 변경 URL로 진입 (?token=…&email=…) */
+const MIN_LENGTH = 8;
+const MAX_LENGTH = 64;
+
+/** 주소의 t · exp · sig. 하나라도 없으면 null (만료 화면) */
+function readLink(params: URLSearchParams): PasswordLink | null {
+  const t = params.get('t');
+  const exp = Number(params.get('exp'));
+  const sig = params.get('sig');
+  return t && sig && Number.isInteger(exp) && exp > 0 ? { t, exp, sig } : null;
+}
+
+/** UI-TP-04 비밀번호 설정 — Console이 보낸 메일 링크(?t=&exp=&sig=)로 진입. 들어오면 링크를 확인해 이메일을 보여 준다 */
 export default function PasswordSetupPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const { setupPassword } = useAppData();
-  // TODO: 토큰 검증 API 연동. 지금은 token이 없거나 'expired'면 만료로 처리
-  const token = params.get('token');
-  const email = params.get('email') ?? 'admin@tenant-company.com';
-  const [expired, setExpired] = useState(!token || token === 'expired');
+  const toast = useToast();
+  const link = useMemo(() => readLink(params), [params]);
+  /** 확인 전 null */
+  const [email, setEmail] = useState<string | null>(null);
+  const [expired, setExpired] = useState(!link);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  /** 서버가 돌려준 항목별 사유 (400) */
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!link) return;
+    let cancelled = false;
+    verifyPasswordLink(link)
+      .then((r) => !cancelled && setEmail(r.email))
+      .catch((e) => {
+        if (cancelled) return;
+        // 410 만료 · 사용됨 · 위조, 400 형식 오류 모두 만료 화면. 서버에 닿지 못했을 때만 안내 후 만료 화면
+        if (!(e instanceof ApiError) || e.status >= 500 || e.status === 0) toast(errorMessage(e), 'error');
+        setExpired(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [link, toast]);
 
   if (expired) {
     return (
@@ -58,19 +89,36 @@ export default function PasswordSetupPage() {
     );
   }
 
-  // 8자 이상 + 두 값 일치 시 저장 가능 (문자 조합 규칙은 미확정)
-  const longEnough = password.length >= 8;
+  if (email === null) {
+    return (
+      <Shell>
+        <Box sx={{ display: 'grid', placeItems: 'center', py: 6 }}>
+          <CircularProgress aria-label="링크 확인 중" />
+        </Box>
+      </Shell>
+    );
+  }
+
+  // 8~64자 + 두 값 일치 시 저장 가능 (문자 조합 규칙은 미확정 — 서버와 같음)
+  const longEnough = password.length >= MIN_LENGTH && password.length <= MAX_LENGTH;
   const matches = password.length > 0 && password === confirm;
   const canSave = longEnough && matches && !saving;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!canSave || !token) return;
+    if (!canSave || !link) return;
     setSaving(true);
-    const ok = await setupPassword(token, password);
-    setSaving(false);
-    if (ok) setDone(true);
-    else setExpired(true);
+    setServerError(null);
+    try {
+      await setupPassword(link, password);
+      setDone(true);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 410) setExpired(true);
+      else if (err instanceof ApiError && err.status === 400) setServerError(err.fields.password ?? err.message);
+      else toast(errorMessage(err), 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -92,9 +140,13 @@ export default function PasswordSetupPage() {
               autoComplete="new-password"
               placeholder="8자 이상 입력"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              error={password.length > 0 && !longEnough}
-              helperText={password.length > 0 && !longEnough ? '8자 이상 입력해주세요.' : undefined}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setServerError(null);
+              }}
+              slotProps={{ htmlInput: { maxLength: MAX_LENGTH } }}
+              error={(password.length > 0 && !longEnough) || serverError !== null}
+              helperText={serverError ?? (password.length > 0 && !longEnough ? '8자 이상 64자 이하로 입력해주세요.' : undefined)}
             />
           </FormField>
           <FormField label="비밀번호 확인" htmlFor="confirm-pw" required>
@@ -133,7 +185,7 @@ export default function PasswordSetupPage() {
           <Typography variant="body1" sx={{ mt: 0.5, color: text.secondary }}>
             확인을 누르면 로그인 화면으로 이동합니다.
           </Typography>
-          <Button variant="contained" fullWidth sx={{ mt: 3 }} onClick={() => navigate('/login')}>
+          <Button variant="contained" fullWidth sx={{ mt: 3 }} onClick={() => navigate('/login', { replace: true })}>
             확인
           </Button>
         </DialogContent>

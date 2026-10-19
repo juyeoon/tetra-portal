@@ -1,7 +1,9 @@
-/** 트래픽 수용 인원 플랜 — S 1만 / M 3만 / L 5만 / XL 10만 (UI-TP-08) */
-export type Plan = 'S' | 'M' | 'L' | 'XL';
+/**
+ * API 응답 모양 그대로 (Portal API `/api/portal`). 상태 · 타입 값은 DB 값(영문 UPPER_SNAKE_CASE),
+ * 일시는 ISO-8601 +09:00 문자열 — 화면에 그릴 때 utils/format 의 formatDateTime 으로 바꾼다.
+ */
 
-/** 로그인한 테넌트 관리자 계정 */
+/** 로그인한 테넌트 관리자 계정 (GET /me) */
 export interface Account {
   companyName: string;
   tenantId: string;
@@ -10,121 +12,173 @@ export interface Account {
   email: string;
 }
 
+/** 요금제 (GET /plans) — 금액은 화면 · API에 없다 */
+export interface Plan {
+  /** S · M · L · XL */
+  planCode: string;
+  /** 최대 동시 수용 인원 */
+  maxCapacity: number;
+}
+
 /** 이벤트 타입 — 쿠폰 / 타임세일 / 라이브커머스 (UI-TP-07) */
-export type EventType = 'COUPON' | 'TIME_SALE' | 'LIVE_COMMERCE';
+export type EventType = 'COUPON' | 'TIMESALE' | 'LIVE_COMMERCE';
 
-/** 신청상태 5종 — 신청됨(처리 중) / 승인 대기 중 / 신청 실패 / 승인됨 / 반려됨 (UI-TP-05) */
+/** 신청 상태 5종 (UI-TP-05) */
 export type ApplicationStatus = 'APPLYING' | 'APPLIED' | 'APPLY_FAILED' | 'APPROVED' | 'REJECTED';
-/** 호스팅상태 2종 — 호스팅 중 / 호스팅 종료 */
-export type HostingStatus = 'HOSTING' | 'ENDED';
-/** 이벤트상태 2종 — 진행 중 / 만료 */
-export type EventStatus = 'OPEN' | 'EXPIRED';
+/** 호스팅 상태 7종 — 승인 전 null */
+export type HostingStatus = 'PENDING' | 'DEPLOYED' | 'DEPLOY_FAILED' | 'HOSTING' | 'HOSTING_FAILED' | 'ENDED' | 'END_FAILED';
+/** 이벤트 상태 4종 — 승인 전 null */
+export type EventStatus = 'SCHEDULED' | 'OPEN' | 'OPEN_FAILED' | 'EXPIRED';
 
-export interface Coupon {
-  name: string;
-  /** 화면 노출 문구 */
-  description: string;
-  quantity: number;
-}
-
-export interface BannerFile {
-  name: string;
-  width: number;
-  height: number;
-}
-
-/** 화면 구성 위젯 위치 (UI-TP-09) */
+/** 화면 구성 위젯 위치 (UI-TP-09) — 신청 요청 · 상세 응답의 layout 과 같은 모양 */
 export type HAlign = 'LEFT' | 'CENTER' | 'RIGHT';
 export type VAlign = 'TOP' | 'MIDDLE' | 'BOTTOM';
 export type ScreenWidget = 'title' | 'banner' | 'couponList' | 'issueButton';
 export type ScreenTheme = 'WHITE' | 'WARM_ORANGE' | 'DARK' | 'BLUE';
 
-export interface ScreenSetting {
-  widgets: Record<ScreenWidget, { h: HAlign; v: VAlign }>;
-  theme: ScreenTheme;
-}
+export type ScreenSetting = Record<ScreenWidget, { h: HAlign; v: VAlign }> & { theme: ScreenTheme };
 
-/** 상태 처리 기록 (Status Log) */
-export interface StatusLog {
-  status: ApplicationStatus;
-  at: string;
-  /** 처리 내용 (예: '다란 (테넌트 관리자)', '플랫폼 운영자') */
-  by: string;
-  /** 반려 사유 — 운영자가 OPS-03-M2에서 입력 */
-  reason?: string;
-}
-
-/** 이벤트 결과 (UI-TP-6-2) */
-export interface EventResult {
-  openedAt: string;
-  aggregatedAt: string;
-  issued: number;
-  /** 재고 소진 후 발급 시도 */
-  soldOut: number;
-  /** 대기열 이탈 */
-  dropped: number;
-  peakConcurrent: number;
-  peakAt: string;
-  /** 오픈 후 10분(00:00~00:09) 분당 발급 결과 */
-  perMinute: { minute: string; issued: number; soldOut: number }[];
-}
-
-export interface PortalEvent {
-  /** {테넌트ID}-evt-{번호}-01 */
-  id: string;
+/** 목록의 한 줄 (GET /events) */
+export interface EventSummary {
+  eventId: number;
   name: string;
-  type: EventType;
-  eventStart: string;
-  eventEnd: string;
-  hostingStart: string;
-  hostingEnd: string;
-  /** 승인 후 발급 */
-  domain?: string;
-  banner: BannerFile;
-  plan: Plan;
-  /** 선택 규모 초과 시 추가요금(extracharge) 산정 포함 여부 */
-  extraTraffic: boolean;
-  endpointUrl: string;
-  coupons: Coupon[];
-  screen: ScreenSetting;
-  appliedAt: string;
-  applicant: string;
+  eventType: EventType;
   applicationStatus: ApplicationStatus;
-  /** 승인 전에는 없음('-' 표시) */
-  hostingStatus?: HostingStatus;
-  eventStatus?: EventStatus;
+  hostingStatus: HostingStatus | null;
+  eventStatus: EventStatus | null;
+  startAt: string;
+  endAt: string;
+  hostingStartAt: string;
+  hostingEndAt: string;
+  appliedAt: string;
+  trafficPlanCode: string;
+}
+
+/** 결과 탭 상태 — IN_PROGRESS면 결과 탭을 막는다 */
+export type ResultState = 'END_FAILED' | 'READY' | 'AGGREGATING' | 'IN_PROGRESS';
+
+export type StatusType = 'APPLICATION' | 'HOSTING' | 'EVENT';
+/** 누가 바꿨나 — TENANT 테넌트 관리자 / OPERATOR 운영자 / SYSTEM 자동 처리 */
+export type Actor = 'TENANT' | 'OPERATOR' | 'SYSTEM';
+
+/** 진행 기록 한 건 (신청 · 호스팅 · 이벤트) */
+export interface StatusLog {
+  statusType: StatusType;
+  prevStatus: string | null;
+  newStatus: string;
+  changedAt: string;
+  /** 원인 · 사유 (반려 사유, 실패 원인 등) */
+  detail: string | null;
+  actor: Actor;
+}
+
+export interface Coupon {
+  couponId: number;
+  name: string;
+  /** 화면 노출 문구 */
+  description: string;
+}
+
+/** 상세 (GET /events/{id}) */
+export interface EventDetail {
+  eventId: number;
+  name: string;
+  eventType: EventType;
+  startAt: string;
+  endAt: string;
+  hostingStartAt: string;
+  hostingEndAt: string;
+  /** 고객사 이벤트 페이지 주소 */
+  endpointUrl: string;
+  trafficPlanCode: string;
+  /** 총 발급 재고 (이벤트 단위) */
+  stockCount: number;
+  appliedAt: string;
+  /** 신청자(테넌트 담당자 이름) */
+  applicantName: string;
+  status: {
+    applicationStatus: ApplicationStatus;
+    hostingStatus: HostingStatus | null;
+    eventStatus: EventStatus | null;
+    /** REJECTED일 때만 */
+    rejectReason: string | null;
+    resultState: ResultState;
+  };
+  coupons: Coupon[];
+  layout: ScreenSetting;
+  /** 승인되고 만료 전일 때만 */
+  domain: string | null;
+  /** 시각 순서 */
   logs: StatusLog[];
-  result?: EventResult;
+}
+
+/** 결과 (GET /events/{id}/result) — state별로 쓰지 않는 값은 null */
+export interface EventResult {
+  eventId: number;
+  state: ResultState;
+  eventOpenAt: string;
+  /** READY일 때만 */
+  aggregatedAt: string | null;
+  hostingStatus: HostingStatus | null;
+  eventStatus: EventStatus | null;
+  /** IN_PROGRESS일 때만 — 종료 예정 */
+  endAt: string | null;
+  /** END_FAILED일 때만 */
+  failure: { cause: string | null; occurredAt: string } | null;
+  /** READY일 때만 */
+  result: {
+    metrics: {
+      successCount: number;
+      totalStock: number;
+      /** 0~1 */
+      selloutRate: number;
+      soldoutCount: number;
+      peakConcurrent: number | null;
+      maxCapacity: number;
+      /** 0~1 */
+      capacityUsageRate: number | null;
+      peakAt: string | null;
+    };
+    composition: { successCount: number; soldoutCount: number; abandonedCount: number };
+    /** 대기열 진입 시각(분) 기준 */
+    perMinute: { minute: string; successCount: number; soldoutCount: number }[];
+  } | null;
+}
+
+/** 내려받기 링크 (CSV · 리포트) — presigned URL, 만료 뒤에는 다시 요청 */
+export interface DownloadLink {
+  url: string;
+  expiresAt: string;
 }
 
 /** 알림 우선순위 — 긴급 / 경고 / 정보 */
-export type NotificationPriority = 'CRITICAL' | 'WARNING' | 'INFO';
+export type NotificationPriority = 'URGENT' | 'WARNING' | 'INFO';
 
+/** 알림 (GET /notifications) — 최신순 */
 export interface PortalNotification {
-  id: number;
+  notificationId: number;
+  /** 관련 이벤트 — 없으면 null */
+  eventId: number | null;
+  /** 분류 (고도화 때 확정 — 지금은 APPLICATION) */
+  category: string;
   priority: NotificationPriority;
-  message: string;
-  at: string;
+  occurredAt: string;
+  content: string;
   read: boolean;
 }
 
+/** 리포트 (GET /reports) — 최근 생성 먼저 */
 export interface Report {
-  id: number;
+  reportId: number;
   name: string;
-  period: string;
+  category: string;
+  periodStart: string;
+  periodEnd: string;
   createdAt: string;
 }
 
-export interface SlackSetting {
-  connected: boolean;
-  /** 연동된 워크스페이스·계정 표시 */
-  connectedLabel?: string;
-  /** 워크스페이스 등록 (최대 1개) */
-  workspace: string;
-  channels: Record<NotificationPriority, string>;
-}
-
+/** 알림 설정 (GET /settings) — Slack 연동은 MVP 1차에 없다(slackAvailable false) */
 export interface PortalSettings {
   emailEnabled: boolean;
-  slack: SlackSetting;
+  slackAvailable: boolean;
 }

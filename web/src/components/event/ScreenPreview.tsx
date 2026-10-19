@@ -13,7 +13,7 @@ const justify: Record<HAlign, string> = { LEFT: 'flex-start', CENTER: 'center', 
 
 /** 선택 요약 — "제목 상-중 / 배너 상-중 / … · 테마 화이트" */
 export const screenSummary = (s: ScreenSetting) =>
-  `${WIDGET_ORDER.map((w) => `${widgetLabel[w].replace('(카드)', '')} ${vLabel[s.widgets[w].v]}-${hLabel[s.widgets[w].h]}`).join(' / ')} · 테마 ${themeLabel[s.theme]}`;
+  `${WIDGET_ORDER.map((w) => `${widgetLabel[w].replace('(카드)', '')} ${vLabel[s[w].v]}-${hLabel[s[w].h]}`).join(' / ')} · 테마 ${themeLabel[s.theme]}`;
 
 function Widget({ widget, accent, fg }: { widget: ScreenWidget; accent: string; fg: string }) {
   switch (widget) {
@@ -78,8 +78,8 @@ export default function ScreenPreview({ screen, domain = 'event.tetra-shop.com',
       <Box sx={{ height, display: 'grid', gridTemplateRows: 'repeat(3, 1fr)', bgcolor: t.bg, color: t.fg, transition: 'background-color .2s' }}>
         {zones.map((zone) => (
           <Stack key={zone} justifyContent="center" spacing={1.25} sx={{ px: 3, py: 1.5 }}>
-            {WIDGET_ORDER.filter((w) => screen.widgets[w].v === zone).map((w) => (
-              <Box key={w} sx={{ display: 'flex', justifyContent: justify[screen.widgets[w].h] }}>
+            {WIDGET_ORDER.filter((w) => screen[w].v === zone).map((w) => (
+              <Box key={w} sx={{ display: 'flex', justifyContent: justify[screen[w].h] }}>
                 <Widget widget={w} accent={t.accent} fg={t.fg} />
               </Box>
             ))}

@@ -50,7 +50,7 @@ function Segmented<T extends string>({ options, value, label, onSelect, ariaLabe
 
 /** UI-TP-09 이벤트 신청 - Tab3 (화면 설정) */
 export default function ScreenStep({ screen, onChange, onPrev, onNext }: Props) {
-  const setWidget = (w: ScreenWidget, patch: Partial<{ h: HAlign; v: VAlign }>) => onChange({ ...screen, widgets: { ...screen.widgets, [w]: { ...screen.widgets[w], ...patch } } });
+  const setWidget = (w: ScreenWidget, patch: Partial<{ h: HAlign; v: VAlign }>) => onChange({ ...screen, [w]: { ...screen[w], ...patch } });
 
   return (
     <>
@@ -75,8 +75,8 @@ export default function ScreenStep({ screen, onChange, onPrev, onNext }: Props) 
                 <Typography variant="body1" sx={{ fontWeight: font.weight.medium }}>
                   {widgetLabel[w]}
                 </Typography>
-                <Segmented options={H} value={screen.widgets[w].h} label={hLabel} onSelect={(h) => setWidget(w, { h })} ariaLabel={`${widgetLabel[w]} 가로 위치`} />
-                <Segmented options={V} value={screen.widgets[w].v} label={vLabel} onSelect={(v) => setWidget(w, { v })} ariaLabel={`${widgetLabel[w]} 세로 위치`} />
+                <Segmented options={H} value={screen[w].h} label={hLabel} onSelect={(h) => setWidget(w, { h })} ariaLabel={`${widgetLabel[w]} 가로 위치`} />
+                <Segmented options={V} value={screen[w].v} label={vLabel} onSelect={(v) => setWidget(w, { v })} ariaLabel={`${widgetLabel[w]} 세로 위치`} />
               </Box>
             ))}
           </Box>

@@ -7,16 +7,17 @@ import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { color, font, radius, size, text } from '@/theme/theme';
 import type { EventType } from '@/types';
 import { eventTypeLabel } from '@/utils/status';
+import { AVAILABLE_TYPES } from './draft';
 
 const TYPES: { type: EventType; icon: ReactNode; description: string; guide: string }[] = [
   {
     type: 'COUPON',
     icon: <ConfirmationNumberOutlinedIcon />,
     description: '할인 쿠폰, 무료배송 쿠폰 등 발급형 혜택을 제공할 때 선택하세요. 발급 수량 제한과 선착순 지급 방식에 적합합니다.',
-    guide: '선착순으로 쿠폰을 발급합니다. 쿠폰 종류(최대 10종)와 종류별 발급 매수를 입력합니다.',
+    guide: '선착순으로 쿠폰을 발급합니다. 쿠폰 종류(최대 10종)와 전체 발급 재고를 입력합니다.',
   },
   {
-    type: 'TIME_SALE',
+    type: 'TIMESALE',
     icon: <TimerOutlinedIcon />,
     description: '한정된 시간 동안 특가로 상품을 판매할 때 선택하세요. 정가·세일가·할인율 기반의 상품 구성이 가능합니다.',
     guide: '정해진 시간에만 열리는 특가 판매 이벤트입니다.',
@@ -41,8 +42,11 @@ export default function TypeStep({ onSelect }: { onSelect: (type: EventType) => 
       </Typography>
 
       <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' } }}>
-        {TYPES.map((t) => (
-          <Card key={t.type} sx={{ p: 3, display: 'flex', flexDirection: 'column' }}>
+        {TYPES.map((t) => {
+          // 템플릿이 준비되지 않은 타입은 고를 수 없다 (서버도 거절)
+          const available = AVAILABLE_TYPES.includes(t.type);
+          return (
+          <Card key={t.type} sx={{ p: 3, display: 'flex', flexDirection: 'column', opacity: available ? 1 : 0.6 }}>
             <Stack direction="row" alignItems="center" spacing={0.75}>
               <Typography variant="h3" component="h3">
                 {eventTypeLabel[t.type]}
@@ -59,11 +63,12 @@ export default function TypeStep({ onSelect }: { onSelect: (type: EventType) => 
             <Typography variant="body1" sx={{ flex: 1, color: text.secondary, minHeight: 72 }}>
               {t.description}
             </Typography>
-            <Button variant="contained" size="large" fullWidth onClick={() => onSelect(t.type)} sx={{ mt: 3, borderRadius: radius.md, fontWeight: font.weight.semibold }}>
-              선택
+            <Button variant="contained" size="large" fullWidth disabled={!available} onClick={() => onSelect(t.type)} sx={{ mt: 3, borderRadius: radius.md, fontWeight: font.weight.semibold }}>
+              {available ? '선택' : '준비 중'}
             </Button>
           </Card>
-        ))}
+          );
+        })}
       </Box>
     </>
   );

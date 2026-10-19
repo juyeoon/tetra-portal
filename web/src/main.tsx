@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { CssBaseline, ThemeProvider } from '@mui/material';
 import App from './App';
-import { AppDataProvider } from './store/AppDataContext';
+import { AuthProvider } from './store/AuthContext';
 import { ToastProvider } from './store/ToastContext';
 import theme from './theme/theme';
 
@@ -14,11 +14,11 @@ createRoot(document.getElementById('root')!).render(
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <BrowserRouter>
-        <AppDataProvider>
+        <AuthProvider>
           <ToastProvider>
             <App />
           </ToastProvider>
-        </AppDataProvider>
+        </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>
   </StrictMode>,

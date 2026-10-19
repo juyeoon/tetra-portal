@@ -5,7 +5,7 @@ import CodeBlock from '@/components/common/CodeBlock';
 import SectionTitle from '@/components/common/SectionTitle';
 import { useToast } from '@/store/ToastContext';
 import { color, font, line, radius, size, text, type } from '@/theme/theme';
-import type { PortalEvent } from '@/types';
+import type { EventDetail } from '@/types';
 import { GUIDE_LANGUAGES, jwtExample, jwtStructure, sessionForm, type GuideLanguage } from './guideSnippets';
 
 /** TODO: 연동 가이드 전체 문서 주소가 정해지면 넣는다 */
@@ -32,7 +32,7 @@ function Lead({ children }: { children: ReactNode }) {
 }
 
 /** UI-TP-6-1 이벤트 상세 - 사전 가이드 */
-export default function IntegrationGuide({ event }: { event: PortalEvent }) {
+export default function IntegrationGuide({ event }: { event: EventDetail }) {
   const toast = useToast();
   const [lang, setLang] = useState<GuideLanguage>('Java');
   const domain = event.domain ?? '{승인 후 발급되는 도메인}';
@@ -47,7 +47,7 @@ export default function IntegrationGuide({ event }: { event: PortalEvent }) {
       <Card sx={{ p: 3 }}>
         <SectionTitle>JWT 토큰 구성</SectionTitle>
         <Lead>고객사 서버가 이벤트 입장 시 아래 구성으로 JWT를 만들어 세션 발급 URL로 전달합니다.</Lead>
-        <CodeBlock>{jwtStructure(event.id)}</CodeBlock>
+        <CodeBlock>{jwtStructure(String(event.eventId))}</CodeBlock>
         <Notes
           items={[
             '서명(HS256)에는 운영자가 전달한 연동키(Secret Key)를 사용합니다. 연동키는 설정·연동 관리자에게 별도로 발급받습니다.',
@@ -96,7 +96,7 @@ export default function IntegrationGuide({ event }: { event: PortalEvent }) {
               );
             })}
           </Stack>
-          <CodeBlock maxHeight={420}>{jwtExample(lang, event.id)}</CodeBlock>
+          <CodeBlock maxHeight={420}>{jwtExample(lang, String(event.eventId))}</CodeBlock>
         </Card>
 
         <Card sx={{ p: 3, minWidth: 0 }}>
