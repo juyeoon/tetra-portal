@@ -21,6 +21,7 @@ import com.tetra.portal.domain.tenant.Event;
 import com.tetra.portal.domain.tenant.EventBilling;
 import com.tetra.portal.domain.tenant.EventRepository;
 import com.tetra.portal.domain.tenant.EventStatusLog;
+import com.tetra.portal.notification.NotificationService;
 
 import jakarta.persistence.EntityManager;
 
@@ -40,14 +41,17 @@ class ApplyWriter {
 
 	private final TenantRepository tenants;
 
+	private final NotificationService notifications;
+
 	private final Clock clock;
 
 	ApplyWriter(EntityManager em, EventRegistryRepository registries, EventRepository events, TenantRepository tenants,
-			Clock clock) {
+			NotificationService notifications, Clock clock) {
 		this.em = em;
 		this.registries = registries;
 		this.events = events;
 		this.tenants = tenants;
+		this.notifications = notifications;
 		this.clock = clock;
 	}
 
@@ -81,8 +85,8 @@ class ApplyWriter {
 	}
 
 	/**
-	 * (b) 배너 업로드 성공 — registry · event APPLIED + 배너 경로, 테넌트가 INACTIVE면 ACTIVE.
-	 * 이미 APPLYING이 아니면(정리 작업이 먼저 실패 처리) 아무것도 하지 않고 false.
+	 * (b) 배너 업로드 성공 — registry · event APPLIED + 배너 경로, 운영자 · 테넌트 알림, 테넌트가 INACTIVE면 ACTIVE.
+	 * 이미 APPLYING이 아니면(정리 작업이 먼저 실패 처리) 아무것도 하지 않고 false — 알림도 남기지 않는다.
 	 */
 	@Transactional
 	public boolean markApplied(String tenantId, Long eventId, String bannerPath) {
@@ -94,13 +98,14 @@ class ApplyWriter {
 		LocalDateTime now = Kst.now(clock);
 		em.persist(EventStatusLog.application(eventId, tenantId, ApplicationStatus.APPLYING, ApplicationStatus.APPLIED,
 				now, null));
+		notifications.applicationApplied(tenantId, eventId);
 		if (tenants.activateIfInactive(tenantId) == 1) {
 			em.persist(TenantStatusLog.automatic(tenantId, now, AccountStatus.INACTIVE, AccountStatus.ACTIVE, eventId));
 		}
 		return true;
 	}
 
-	/** (c) 실패 — registry · event APPLY_FAILED, 원인은 진행 기록에. 테넌트 상태는 그대로. 이미 처리됐으면 false. */
+	/** (c) 실패 — registry · event APPLY_FAILED, 원인은 진행 기록 · 알림에. 테넌트 상태는 그대로. 이미 처리됐으면 false. */
 	@Transactional
 	public boolean markFailed(String tenantId, Long eventId, String detail) {
 		if (registries.updateApplicationStatus(eventId, tenantId, ApplicationStatus.APPLYING,
@@ -110,6 +115,7 @@ class ApplyWriter {
 		requireOne(events.markApplyFailed(eventId, tenantId), eventId);
 		em.persist(EventStatusLog.application(eventId, tenantId, ApplicationStatus.APPLYING,
 				ApplicationStatus.APPLY_FAILED, Kst.now(clock), detail));
+		notifications.applicationFailed(tenantId, eventId, detail);
 		return true;
 	}
 

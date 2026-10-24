@@ -8,16 +8,19 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 
 import com.tetra.portal.external.DownloadUrlSigner.SignedUrl;
 import com.tetra.portal.external.MailGateway;
@@ -50,6 +53,31 @@ class ExtrasApiTest extends IntegrationTest {
 		mvc.perform(patch("/api/portal/notifications/{id}/read", older).cookie(loginCookie(A)))
 			.andExpect(status().isNoContent()); // 멱등
 		assertThat(data.count("SELECT COUNT(*) FROM t_" + A + ".tenant_notification WHERE is_read = 1")).isEqualTo(1);
+	}
+
+	@Test
+	void appliedApplicationShowsUpInNotificationCenter() throws Exception {
+		data.tenant(A, "A사", "ACTIVE", "READY");
+		String body = mvc.perform(multipart("/api/portal/events")
+				.file(new MockMultipartFile("application", "", MediaType.APPLICATION_JSON_VALUE,
+						ApplyApiTest.application(Map.of()).getBytes()))
+				.file(new MockMultipartFile("banner", "banner.png", "image/png", ApplyApiTest.PNG))
+				.cookie(loginCookie(A)))
+			.andExpect(status().isAccepted())
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		long eventId = Long.parseLong(body.replaceAll(".*\"eventId\":(\\d+).*", "$1"));
+		assertThat(data.awaitApplicationStatus(eventId)).isEqualTo("APPLIED");
+
+		mvc.perform(get("/api/portal/notifications").cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.length()").value(1))
+			.andExpect(jsonPath("$[0].eventId").value(eventId))
+			.andExpect(jsonPath("$[0].category").value("APPLICATION"))
+			.andExpect(jsonPath("$[0].priority").value("INFO"))
+			.andExpect(jsonPath("$[0].content").value("[가을 쿠폰] 이벤트 신청이 접수되었습니다."))
+			.andExpect(jsonPath("$[0].read").value(false));
 	}
 
 	@Test

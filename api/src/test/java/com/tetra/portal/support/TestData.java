@@ -287,6 +287,16 @@ public final class TestData {
 				tenantId);
 	}
 
+	public List<Map<String, Object>> operatorNotifications(long eventId) {
+		return jdbc.queryForList(
+				"SELECT * FROM tetra_platform.operator_notification WHERE event_id = ? ORDER BY notification_id", eventId);
+	}
+
+	public List<Map<String, Object>> tenantNotifications(String tenantId, long eventId) {
+		return jdbc.queryForList(
+				"SELECT * FROM t_" + tenantId + ".tenant_notification WHERE event_id = ? ORDER BY notification_id", eventId);
+	}
+
 	public long count(String sql, Object... args) {
 		Long value = jdbc.queryForObject(sql, Long.class, args);
 		return value == null ? 0 : value;
