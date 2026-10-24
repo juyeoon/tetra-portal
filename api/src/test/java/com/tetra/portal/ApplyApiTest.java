@@ -122,6 +122,18 @@ class ApplyApiTest extends IntegrationTest {
 			.satisfies(l -> assertThat(l).containsEntry("prev_status", "INACTIVE").containsEntry("new_status", "ACTIVE")
 				.containsEntry("related_event_id", eventId));
 
+		// 신청 접수 알림 — 운영자 · 테넌트 1건씩. 계정 활성화는 같은 순간이라 따로 남기지 않는다
+		assertThat(data.operatorNotifications(eventId)).singleElement()
+			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("category", "APPLICATION")
+				.containsEntry("priority", "INFO").containsEntry("is_read", false)
+				.containsEntry("content", "[A사] [가을 쿠폰] 이벤트 신청이 접수되었습니다. 승인 검토가 필요합니다."));
+		assertThat(data.tenantNotifications(A, eventId)).singleElement()
+			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("category", "APPLICATION")
+				.containsEntry("priority", "INFO").containsEntry("is_read", false)
+				.containsEntry("content", "[가을 쿠폰] 이벤트 신청이 접수되었습니다."));
+		assertThat(data.count("SELECT COUNT(*) FROM tetra_platform.operator_notification WHERE category <> 'APPLICATION'"))
+			.isZero();
+
 		// 상세에서 바로 보인다
 		mvc.perform(get("/api/portal/events/{id}", eventId).cookie(loginCookie(A)))
 			.andExpect(jsonPath("$.status.applicationStatus").value("APPLIED"))
@@ -135,6 +147,8 @@ class ApplyApiTest extends IntegrationTest {
 		long eventId = appliedEventId(apply(A, application(Map.of()), PNG));
 		assertThat(data.awaitApplicationStatus(eventId)).isEqualTo("APPLIED");
 		assertThat(data.tenantStatusLogs(A)).isEmpty();
+		assertThat(data.operatorNotifications(eventId)).hasSize(1);
+		assertThat(data.tenantNotifications(A, eventId)).hasSize(1);
 	}
 
 	@Test
@@ -151,6 +165,14 @@ class ApplyApiTest extends IntegrationTest {
 			.satisfies(l -> assertThat(l).containsEntry("new_status", "APPLY_FAILED").containsEntry("detail", "배너 업로드 실패"));
 		assertThat(data.tenantStatusLogs(A)).isEmpty();
 		assertThat(data.count("SELECT COUNT(*) FROM tetra_platform.tenant WHERE tenant_id = ? AND account_status = 'INACTIVE'", A)).isEqualTo(1);
+
+		assertThat(data.operatorNotifications(eventId)).singleElement()
+			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("category", "APPLICATION")
+				.containsEntry("priority", "WARNING")
+				.containsEntry("content", "[A사] [가을 쿠폰] 이벤트 신청 접수에 실패했습니다. 원인: 배너 업로드 실패"));
+		assertThat(data.tenantNotifications(A, eventId)).singleElement()
+			.satisfies(n -> assertThat(n).containsEntry("category", "APPLICATION").containsEntry("priority", "WARNING")
+				.containsEntry("content", "[가을 쿠폰] 이벤트 신청이 접수되지 않았습니다. 다시 신청해 주세요. 원인: 배너 업로드 실패"));
 	}
 
 	@Test
@@ -263,9 +285,23 @@ class ApplyApiTest extends IntegrationTest {
 		assertThat(data.eventRow(B, 2001)).containsEntry("application_status", "APPLY_FAILED");
 		assertThat(data.statusLogs(A, 1001)).last().satisfies(l -> assertThat(l).containsEntry("detail", "배너 업로드 시간 초과"));
 		assertThat(data.registry(1002)).containsEntry("application_status", "APPLYING"); // 아직 10분 안
+		assertThat(data.operatorNotifications(1001)).singleElement()
+			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("priority", "WARNING")
+				.containsEntry("content", "[A사] [이벤트 1001] 이벤트 신청 접수에 실패했습니다. 원인: 배너 업로드 시간 초과"));
+		assertThat(data.tenantNotifications(A, 1001)).singleElement()
+			.satisfies(n -> assertThat(n).containsEntry("priority", "WARNING")
+				.containsEntry("content", "[이벤트 1001] 이벤트 신청이 접수되지 않았습니다. 다시 신청해 주세요. 원인: 배너 업로드 시간 초과"));
+		assertThat(data.operatorNotifications(2001)).singleElement()
+			.satisfies(n -> assertThat(n).containsEntry("tenant_id", B).containsEntry("priority", "WARNING"));
+		assertThat(data.tenantNotifications(B, 2001)).hasSize(1);
+		assertThat(data.operatorNotifications(1002)).isEmpty();
+		assertThat(data.tenantNotifications(A, 1002)).isEmpty();
+
 		assertThat(sweeper.sweep()).isZero(); // 이미 처리된 것은 다시 기록하지 않는다
 		assertThat(data.statusLogs(A, 1001)).hasSize(1);
 		assertThat(data.tenantStatusLogs(A)).isEmpty();
+		assertThat(data.operatorNotifications(1001)).hasSize(1);
+		assertThat(data.tenantNotifications(A, 1001)).hasSize(1);
 	}
 
 	@Test

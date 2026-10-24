@@ -96,6 +96,10 @@ public class EventRegistry {
 		return tenantId;
 	}
 
+	public String getName() {
+		return name;
+	}
+
 	public LocalDateTime getAppliedAt() {
 		return appliedAt;
 	}
