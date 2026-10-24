@@ -11,6 +11,7 @@ import { eventTypeLabel } from '@/utils/status';
 import CouponTable from './CouponTable';
 import { screenSummary } from './ScreenPreview';
 import StatusLogTimeline from './StatusLogTimeline';
+import { timelineOf } from './statusLogView';
 
 interface Props {
   event: EventDetail;
@@ -129,7 +130,7 @@ export default function ApplicationContent({ event, plans, tenant }: Props) {
       <Stack spacing={3} sx={{ minWidth: 0 }}>
         <Card sx={{ p: 3 }}>
           <SectionTitle>상태 처리 기록</SectionTitle>
-          <StatusLogTimeline logs={event.logs} applicantName={event.applicantName} />
+          <StatusLogTimeline logs={timelineOf(event.logs, event.startAt, new Date(), event.applicantName)} />
         </Card>
         <Card sx={{ p: 3 }}>
           <SectionTitle>신청자 정보</SectionTitle>

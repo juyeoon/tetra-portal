@@ -1,9 +1,10 @@
 import { useState, type ReactNode } from 'react';
-import { Box, Button, Card, Stack, Typography } from '@mui/material';
+import { Box, Button, Card, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { BarChart } from '@mui/x-charts/BarChart';
 import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import HourglassEmptyRoundedIcon from '@mui/icons-material/HourglassEmptyRounded';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import InsightsOutlinedIcon from '@mui/icons-material/InsightsOutlined';
 import { errorMessage } from '@/api/client';
 import { getHistoryCsv, getResult } from '@/api/portal';
@@ -14,6 +15,7 @@ import StatCard from '@/components/common/StatCard';
 import StateMessage from '@/components/common/StateMessage';
 import { useToast } from '@/store/ToastContext';
 import { chartColors, font, line, size, text } from '@/theme/theme';
+import { PEAK_CONCURRENT_HELP } from '@/utils/event';
 import { formatDateTime, formatNumber, formatPercent, formatRate, formatTime, openDownload } from '@/utils/format';
 
 /** 분당 그래프는 오픈 직후 10분만 그린다 (UI-TP-6-2) */
@@ -107,7 +109,8 @@ export default function EventResultPanel({ eventId }: { eventId: number }) {
 
   const m = r.metrics;
   const c = r.composition;
-  const attempts = c.successCount + c.soldoutCount + c.abandonedCount;
+  // 이탈이 세션 기준(입장했지만 결과를 받지 못한 수)이라 셋의 합 = 입장 세션 수
+  const sessions = c.successCount + c.soldoutCount + c.abandonedCount;
   const parts = [
     { label: '발급 성공', value: c.successCount, fill: chartColors.issued },
     { label: '품절', value: c.soldoutCount, fill: chartColors.soldOut },
@@ -132,7 +135,17 @@ export default function EventResultPanel({ eventId }: { eventId: number }) {
           <StatCard label="발급 성공 / 총 재고" value={`${formatNumber(m.successCount)} / ${formatNumber(m.totalStock)}`} sub={`소진율 ${formatRate(m.selloutRate, 0)}`} />
           <StatCard label="품절로 못 받은 수" value={`${formatNumber(m.soldoutCount)}명`} sub="재고 소진 후 발급 시도" />
           <StatCard
-            label="최대 동시 접속자 / 플랜 수용 인원"
+            label={
+              <>
+                최대 동시 접속자 / 플랜 수용 인원
+                {/* 버튼이라 Tab 포커스로도 툴팁이 열린다. 터치는 탭하면 바로 */}
+                <Tooltip title={PEAK_CONCURRENT_HELP} enterTouchDelay={0}>
+                  <IconButton size="small" aria-label="최대 동시 접속자 설명" sx={{ ml: 0.5, p: 0.25, verticalAlign: 'text-bottom', color: 'inherit' }}>
+                    <InfoOutlinedIcon sx={{ fontSize: size.iconSm }} />
+                  </IconButton>
+                </Tooltip>
+              </>
+            }
             value={`${m.peakConcurrent == null ? '-' : formatNumber(m.peakConcurrent)} / ${formatNumber(m.maxCapacity)}`}
             sub={`사용률 ${formatRate(m.capacityUsageRate)}${m.peakAt ? ` · ${formatDateTime(m.peakAt)}` : ''}`}
           />
@@ -142,12 +155,12 @@ export default function EventResultPanel({ eventId }: { eventId: number }) {
       <Card sx={{ p: 3 }}>
         <SectionTitle>발급 결과 구성</SectionTitle>
         <Typography variant="body2" sx={{ mt: -1.5, mb: 1.5, color: text.tertiary }}>
-          전체 발급 시도 {formatNumber(attempts)}건
+          전체 입장 세션 {formatNumber(sessions)}건
         </Typography>
-        {attempts > 0 && (
+        {sessions > 0 && (
           <Stack direction="row" sx={{ height: 10, overflow: 'hidden', gap: '2px' }}>
             {parts.map((p) => (
-              <Box key={p.label} sx={{ width: `${(p.value / attempts) * 100}%`, bgcolor: p.fill }} title={p.label} />
+              <Box key={p.label} sx={{ width: `${(p.value / sessions) * 100}%`, bgcolor: p.fill }} title={p.label} />
             ))}
           </Stack>
         )}
@@ -162,7 +175,7 @@ export default function EventResultPanel({ eventId }: { eventId: number }) {
                   <Box component="span" sx={{ color: text.primary, fontWeight: font.weight.semibold }}>
                     {formatNumber(p.value)}건
                   </Box>{' '}
-                  ({formatPercent(p.value, attempts)})
+                  ({formatPercent(p.value, sessions)})
                 </>
               }
             />

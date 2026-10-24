@@ -6,7 +6,7 @@ import { useApi } from '@/api/useApi';
 import PageHeader from '@/components/layout/PageHeader';
 import { useToast } from '@/store/ToastContext';
 import type { EventType } from '@/types';
-import { describeServerErrors, initialDraft, toApplication, type ApplyDraft } from './draft';
+import { describeInfoErrors, describeServerErrors, infoErrors, initialDraft, toApplication, type ApplyDraft } from './draft';
 import InfoStep from './InfoStep';
 import ScreenStep from './ScreenStep';
 import StepProgress from './StepProgress';
@@ -21,7 +21,7 @@ export default function EventApplyPage() {
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<ApplyDraft>(initialDraft);
   const [submitting, setSubmitting] = useState(false);
-  /** 서버가 돌려준 입력 오류 (400) — 제출 단계에 보여 준다 */
+  /** 제출 직전 재검사 또는 서버가 돌려준 입력 오류 (400) — 제출 단계에 보여 준다 */
   const [serverErrors, setServerErrors] = useState<string[]>([]);
 
   const go = (next: number) => {
@@ -42,6 +42,12 @@ export default function EventApplyPage() {
   // 접수(202)되면 상세로 — 배너 업로드가 끝나면 상태가 승인 대기 중(또는 신청 실패)으로 바뀐다
   const submit = async () => {
     if (!draft.banner) return;
+    // Tab2를 지난 뒤 시간이 흘러 일시 규칙(지금 + 30분 등)이 깨졌을 수 있다 — 보내기 전에 다시 검사
+    const errors = infoErrors(draft);
+    if (Object.keys(errors).length > 0) {
+      setServerErrors(describeInfoErrors(errors));
+      return;
+    }
     setSubmitting(true);
     setServerErrors([]);
     try {

@@ -127,7 +127,8 @@ public class ResultReader {
 					.divide(BigDecimal.valueOf(maxCapacity), 4, RoundingMode.HALF_UP);
 		long success = nz(summary.getSuccessCount());
 		long soldout = nz(summary.getSoldoutCount());
-		long abandoned = Math.max(0, nz(summary.getTicketCount()) - success - soldout);
+		// 이탈 = 입장했지만(세션) 결과(발급 · 품절)를 받지 못한 수. 대기열 진입 전에 나간 사람도 포함
+		long abandoned = Math.max(0, nz(summary.getSessionCount()) - success - soldout);
 		return new ResultResponse.Result(
 				new Metrics(summary.getSuccessCount(), totalStock, summary.getSelloutRate(), summary.getSoldoutCount(),
 						summary.getPeakConcurrent(), maxCapacity, usage, Kst.toOffset(summary.getPeakAt())),

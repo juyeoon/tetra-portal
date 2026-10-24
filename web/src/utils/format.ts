@@ -15,6 +15,9 @@ export function formatDateTime(iso: string | null | undefined) {
 /** API 일시 → 'YYYY.MM.DD' */
 export const formatDate = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).replaceAll('-', '.') : '-');
 
+/** API 일시 → 'MM.DD HH:mm' */
+export const formatMonthDayTime = (iso: string) => `${iso.slice(5, 10).replace('-', '.')} ${iso.slice(11, 16)}`;
+
 /** API 일시 → 'HH:mm' */
 export const formatTime = (iso: string) => iso.slice(11, 16);
 

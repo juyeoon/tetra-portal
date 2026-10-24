@@ -165,11 +165,33 @@ class ApplyApiTest extends IntegrationTest {
 		apply(A, json, PNG).andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("INVALID_INPUT"))
 			.andExpect(jsonPath("$.fields.endAt").exists())
-			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 기간이 이벤트 기간을 포함해야 합니다."))
+			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 이벤트 시작 100분 전까지여야 합니다."))
 			.andExpect(jsonPath("$.fields.trafficPlanCode").value("선택할 수 없는 요금제입니다."))
 			.andExpect(jsonPath("$.fields.endpointUrl").exists());
 		assertThat(data.count("SELECT COUNT(*) FROM tetra_platform.event_registry")).isZero();
 		verify(banners, never()).put(anyString(), any(), any());
+	}
+
+	@Test
+	void hostingStartMustLeadEventStartBy100Minutes() throws Exception {
+		data.tenant(A, "A사", "ACTIVE", "READY");
+		String hostingStart = "\"hostingStartAt\":\"" + iso(START.minusHours(2)) + "\"";
+		apply(A, application(Map.of(hostingStart, "\"hostingStartAt\":\"" + iso(START.minusMinutes(99)) + "\"")), PNG)
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 이벤트 시작 100분 전까지여야 합니다."));
+		appliedEventId(apply(A, application(Map.of(hostingStart, "\"hostingStartAt\":\"" + iso(START.minusMinutes(100)) + "\"")), PNG));
+	}
+
+	@Test
+	void blankNameAndEndpointAreRejected() throws Exception {
+		data.tenant(A, "A사", "ACTIVE", "READY");
+		apply(A, application(Map.of("\"가을 쿠폰\"", "\"   \"", "https://shop.example.com/event", "   ")), PNG)
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fields.name").exists())
+			.andExpect(jsonPath("$.fields.endpointUrl").exists());
+		apply(A, application(Map.of("https://shop.example.com/event", "ftp://shop.example.com")), PNG)
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.fields.endpointUrl").value("http(s)로 시작하는 주소를 입력해 주세요."));
 	}
 
 	@Test
@@ -186,7 +208,8 @@ class ApplyApiTest extends IntegrationTest {
 		String pastJson = application(Map.of()).replace(iso(START.minusHours(2)), iso(past))
 			.replace(iso(START), iso(past.plusHours(1))).replace(iso(START.plusHours(2)), iso(past.plusHours(2)));
 		apply(A, pastJson, PNG).andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 지금보다 뒤여야 합니다."));
+			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 지금부터 30분 이후여야 합니다."))
+			.andExpect(jsonPath("$.fields.startAt").value("이벤트 시작은 지금보다 뒤여야 합니다."));
 
 		String elevenCoupons = application(Map.of()).replace("{\"name\":\"무료 배송\",\"description\":\"3만원 이상\"}",
 				String.join(",", java.util.Collections.nCopies(10, "{\"name\":\"c\",\"description\":\"d\"}")));

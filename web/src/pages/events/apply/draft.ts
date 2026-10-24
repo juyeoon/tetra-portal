@@ -1,7 +1,8 @@
 import type { ApplyApplication } from '@/api/portal';
 import type { EventType, ScreenSetting } from '@/types';
-import { toApiDateTime } from '@/utils/event';
-import { isHttpUrl } from '@/utils/validation';
+// node --test 대상 — 실행 시 불러오는 파일은 상대 경로 + .ts (Node가 @/ 를 풀지 못함)
+import { toApiDateTime } from '../../../utils/event.ts';
+import { isHttpUrl } from '../../../utils/validation.ts';
 
 /** 쿠폰 행 최대 개수 (UI-TP-08 ④) */
 export const MAX_COUPONS = 10;
@@ -71,26 +72,40 @@ export const parseStock = (v: string) => {
   return Number.isInteger(n) && n > 0 && n <= MAX_STOCK ? n : 0;
 };
 
-/** 지금(브라우저 시각)을 datetime-local 형식으로 — 비교용 */
-function nowLocal() {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+/**
+ * 일시 규칙 상수(분) — API ApplyService와 같은 값 (Console 3-13).
+ * 이벤트 오픈 준비(WF2-2) 스케줄 = 이벤트 시작 − 이 값. 출처: ops-workflows wf1-2/EventRegister.asl.json start_at − 5400000ms.
+ */
+export const HOSTING_LEAD_BEFORE_START = 90;
+/** 호스팅 시작(WF2-1)과 이벤트 오픈 준비(WF2-2)가 동시에 돌지 않게 두는 간격(분) */
+export const SCHEDULE_GAP = 10;
+/** 호스팅 시작은 지금 + 이 값(분) 이후. 출처: 승인 후 WF1-2 제한 시간(EventRegister.asl.json TimeoutSeconds 1800) */
+export const APPROVE_MIN_LEAD = 30;
+
+const MINUTE = 60_000;
+/** datetime-local 값(한국 시각) → ms. 브라우저 시간대와 상관없이 +09:00으로 읽는다 */
+const toMs = (local: string) => new Date(toApiDateTime(local)).getTime();
 
 export type InfoErrorKey = 'name' | 'eventPeriod' | 'hostingPeriod' | 'banner' | 'coupons' | 'stock' | 'plan' | 'endpointUrl';
 
-/** 이벤트 정보 단계(Tab2) 입력 오류 — 키별 메시지. 비어 있으면 다음 단계로 진행 가능 (서버도 같은 규칙으로 다시 검사) */
-export function infoErrors(d: ApplyDraft) {
+/**
+ * 이벤트 정보 단계(Tab2) 입력 오류 — 키별 메시지. 비어 있으면 다음 단계로 진행 가능.
+ * 제출(Tab4) 직전에 다시 부르고, 서버도 같은 규칙으로 다시 검사한다.
+ * @param now 기준 시각 (테스트용)
+ */
+export function infoErrors(d: ApplyDraft, now: Date = new Date()) {
   const e: Partial<Record<InfoErrorKey, string>> = {};
+  const lead = HOSTING_LEAD_BEFORE_START + SCHEDULE_GAP;
   if (!d.name.trim()) e.name = '이벤트 이름을 입력해주세요.';
   else if (d.name.trim().length > 100) e.name = '100자 이하로 입력해주세요.';
   if (!d.eventStart || !d.eventEnd) e.eventPeriod = '이벤트 시작·종료 일시를 입력해주세요.';
   else if (d.eventEnd <= d.eventStart) e.eventPeriod = '종료 일시는 시작 일시보다 뒤여야 합니다.';
+  else if (toMs(d.eventStart) <= now.getTime()) e.eventPeriod = '이벤트 시작은 지금보다 뒤여야 합니다.';
   if (!d.hostingStart || !d.hostingEnd) e.hostingPeriod = '도메인 호스팅 시작·종료 일시를 입력해주세요.';
   else if (d.hostingEnd <= d.hostingStart) e.hostingPeriod = '종료 일시는 시작 일시보다 뒤여야 합니다.';
-  else if (d.hostingStart <= nowLocal()) e.hostingPeriod = '호스팅 시작은 지금보다 뒤여야 합니다.';
-  else if (d.eventStart && d.eventEnd && (d.hostingStart > d.eventStart || d.hostingEnd < d.eventEnd)) e.hostingPeriod = '호스팅 기간은 이벤트 기간을 모두 포함해야 합니다.';
+  else if (toMs(d.hostingStart) < now.getTime() + APPROVE_MIN_LEAD * MINUTE) e.hostingPeriod = `호스팅 시작은 지금부터 ${APPROVE_MIN_LEAD}분 이후여야 합니다.`;
+  else if (d.eventStart && toMs(d.hostingStart) > toMs(d.eventStart) - lead * MINUTE) e.hostingPeriod = `호스팅 시작은 이벤트 시작 ${lead}분 전까지여야 합니다.`;
+  else if (d.eventEnd && d.hostingEnd < d.eventEnd) e.hostingPeriod = '호스팅 기간은 이벤트 기간을 모두 포함해야 합니다.';
   if (!d.banner) e.banner = '이벤트 대표 배너 이미지를 업로드해주세요.';
   if (d.type === 'COUPON') {
     if (d.coupons.some((c) => !c.name.trim() || !c.description.trim())) e.coupons = '쿠폰 이름과 Description을 모두 입력해주세요.';
@@ -136,6 +151,22 @@ const serverFieldLabel: Record<string, string> = {
   endpointUrl: '이벤트 엔드포인트 URL',
   layout: '이벤트 화면 설정',
 };
+
+const infoErrorLabel: Record<InfoErrorKey, string> = {
+  name: '이벤트 이름',
+  eventPeriod: '이벤트 기간',
+  hostingPeriod: '도메인 호스팅 기간',
+  banner: '배너 이미지',
+  coupons: '발급할 쿠폰',
+  stock: '총 발급 재고',
+  plan: '트래픽 수용 인원',
+  endpointUrl: '이벤트 엔드포인트 URL',
+};
+
+/** 제출 직전 재검사 오류 — 서버 오류와 같은 모양('항목: 사유')으로 */
+export function describeInfoErrors(errors: Partial<Record<InfoErrorKey, string>>) {
+  return Object.entries(errors).map(([key, message]) => `${infoErrorLabel[key as InfoErrorKey]}: ${message}`);
+}
 
 export function describeServerErrors(fields: Record<string, string>) {
   return Object.entries(fields).map(([key, message]) => {
