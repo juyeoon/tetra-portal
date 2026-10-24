@@ -54,7 +54,8 @@ class ResultApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.result.metrics.peakConcurrent").value(900))
 			.andExpect(jsonPath("$.result.metrics.maxCapacity").value(30000))
 			.andExpect(jsonPath("$.result.metrics.capacityUsageRate").value(0.03))
-			.andExpect(jsonPath("$.result.composition.abandonedCount").value(100)) // 1000 - 700 - 200
+			// 이탈 = 세션 1200 − 발급 700 − 품절 200 (번호표 1000이 아니라 세션 기준)
+			.andExpect(jsonPath("$.result.composition.abandonedCount").value(300))
 			.andExpect(jsonPath("$.result.perMinute.length()").value(2))
 			.andExpect(jsonPath("$.result.perMinute[0].minute").value("2026-09-25T10:00:00+09:00"))
 			.andExpect(jsonPath("$.result.perMinute[0].successCount").value(2))
@@ -64,6 +65,29 @@ class ResultApiTest extends IntegrationTest {
 		// 상세에도 같은 판정
 		mvc.perform(get("/api/portal/events/{id}", 1003).cookie(loginCookie(A)))
 			.andExpect(jsonPath("$.status.resultState").value("READY"));
+	}
+
+	/**
+	 * 이탈은 세션 기준(Console과 같음): 입장했지만 결과(발급 · 품절)를 받지 못한 수.
+	 * 세션 11 · 번호표 9 · 발급 5 · 품절 4 → 번호표 기준이면 0이지만 세션 기준 2. 결과보다 세션이 적으면 0.
+	 */
+	@Test
+	void abandonedCountIsSessionsWithoutResult() throws Exception {
+		data.tenant(A, "A사", "ACTIVE", "READY");
+		data.event(1003, A).approved("ENDED", "EXPIRED", "chsk2609").insert();
+		data.summaryAggregated(A, 1003, 11, 9, 11, OPEN.plusMinutes(1));
+		data.summaryHistory(A, 1003, 10000, 5, 4, "0.0005", "issuance-history/1003.csv", OPEN.plusHours(3));
+		mvc.perform(get("/api/portal/events/{id}/result", 1003).cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.result.composition.successCount").value(5))
+			.andExpect(jsonPath("$.result.composition.soldoutCount").value(4))
+			.andExpect(jsonPath("$.result.composition.abandonedCount").value(2));
+
+		// 집계 Job을 건너뛰어 세션이 0인데 결과가 있으면 음수 대신 0
+		data.jdbc().update("UPDATE t_" + A + ".event_result_summary SET session_count = 0, ticket_count = 0 WHERE event_id = 1003");
+		mvc.perform(get("/api/portal/events/{id}/result", 1003).cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.result.composition.abandonedCount").value(0));
 	}
 
 	@Test

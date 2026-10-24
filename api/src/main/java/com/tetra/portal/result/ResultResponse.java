@@ -45,8 +45,12 @@ public record ResultResponse(Long eventId, State state, OffsetDateTime eventOpen
 			Long peakConcurrent, Long maxCapacity, BigDecimal capacityUsageRate, OffsetDateTime peakAt) {
 	}
 
-	/** 발급 결과 구성. 이탈 = ticket_count − success − soldout (0 미만이면 0) — Console과 같은 임시 기준. */
-	public record Composition(Long successCount, Long soldoutCount, Long abandonedCount) {
+	/**
+	 * 발급 결과 구성. 이탈 = session_count − success_count − soldout_count (0 미만이면 0) —
+	 * 입장했지만 결과(발급 · 품절)를 받지 못한 수. Console OPS-04-3과 같은 기준.
+	 */
+	public record Composition(Long successCount, Long soldoutCount,
+			@Schema(description = "이탈 = session_count − successCount − soldoutCount (0 미만이면 0). 입장했지만 결과(발급 · 품절)를 받지 못한 수") Long abandonedCount) {
 	}
 
 	/** 대기열 진입 시각(queue_entered_at)을 분 단위로 묶은 SUCCESS · FAILED_SOLDOUT 건수. 화면이 앞의 몇 분만 그려도 된다. */

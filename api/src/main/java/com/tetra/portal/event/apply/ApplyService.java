@@ -73,18 +73,7 @@ public class ApplyService {
 		LocalDateTime endAt = kst(request.endAt());
 		LocalDateTime hostingStartAt = kst(request.hostingStartAt());
 		LocalDateTime hostingEndAt = kst(request.hostingEndAt());
-		if (!endAt.isAfter(startAt)) {
-			errors.putIfAbsent("endAt", "이벤트 종료는 시작보다 뒤여야 합니다.");
-		}
-		if (!hostingEndAt.isAfter(hostingStartAt)) {
-			errors.putIfAbsent("hostingEndAt", "호스팅 종료는 시작보다 뒤여야 합니다.");
-		}
-		if (hostingStartAt.isAfter(startAt) || hostingEndAt.isBefore(endAt)) {
-			errors.putIfAbsent("hostingStartAt", "호스팅 기간이 이벤트 기간을 포함해야 합니다.");
-		}
-		if (!hostingStartAt.isAfter(Kst.now(clock))) {
-			errors.putIfAbsent("hostingStartAt", "호스팅 시작은 지금보다 뒤여야 합니다.");
-		}
+		checkPeriods(startAt, endAt, hostingStartAt, hostingEndAt, Kst.now(clock), errors);
 
 		TrafficPlan plan = plans.findById(request.trafficPlanCode()).filter(TrafficPlan::isVisible).orElse(null);
 		if (plan == null) {
@@ -115,6 +104,43 @@ public class ApplyService {
 		Long eventId = router.inTenant(tenant, () -> writer.create(application));
 		uploader.submit(tenantId, eventId, image); // 커밋 뒤
 		return eventId;
+	}
+
+	/**
+	 * 이벤트 오픈 준비(WF2-2) 스케줄 = 이벤트 시작 − 이 값.
+	 * 출처: ops-workflows wf1-2/EventRegister.asl.json eventOpenScheduleAt · 입력 검사의 start_at − 5400000ms.
+	 */
+	static final Duration HOSTING_LEAD_BEFORE_START = Duration.ofMinutes(90);
+
+	/** 호스팅 시작(WF2-1)과 이벤트 오픈 준비(WF2-2)가 동시에 돌지 않게 두는 간격. */
+	static final Duration SCHEDULE_GAP = Duration.ofMinutes(10);
+
+	/** 호스팅 시작은 신청 시점 + 이 값 이후. 출처: 승인 후 WF1-2 제한 시간(EventRegister.asl.json TimeoutSeconds 1800). */
+	static final Duration APPROVE_MIN_LEAD = Duration.ofMinutes(30);
+
+	/** 일시 규칙 (Console 3-13과 같음). 화면 draft.ts infoErrors도 같은 규칙. */
+	static void checkPeriods(LocalDateTime startAt, LocalDateTime endAt, LocalDateTime hostingStartAt,
+			LocalDateTime hostingEndAt, LocalDateTime now, Map<String, String> errors) {
+		Duration lead = HOSTING_LEAD_BEFORE_START.plus(SCHEDULE_GAP);
+		if (!endAt.isAfter(startAt)) {
+			errors.putIfAbsent("endAt", "이벤트 종료는 시작보다 뒤여야 합니다.");
+		}
+		if (!startAt.isAfter(now)) {
+			errors.putIfAbsent("startAt", "이벤트 시작은 지금보다 뒤여야 합니다.");
+		}
+		if (!hostingEndAt.isAfter(hostingStartAt)) {
+			errors.putIfAbsent("hostingEndAt", "호스팅 종료는 시작보다 뒤여야 합니다.");
+		}
+		if (hostingStartAt.isBefore(now.plus(APPROVE_MIN_LEAD))) {
+			errors.putIfAbsent("hostingStartAt",
+					"호스팅 시작은 지금부터 " + APPROVE_MIN_LEAD.toMinutes() + "분 이후여야 합니다.");
+		}
+		if (hostingStartAt.isAfter(startAt.minus(lead))) {
+			errors.putIfAbsent("hostingStartAt", "호스팅 시작은 이벤트 시작 " + lead.toMinutes() + "분 전까지여야 합니다.");
+		}
+		if (hostingEndAt.isBefore(endAt)) {
+			errors.putIfAbsent("hostingEndAt", "호스팅 기간이 이벤트 기간을 포함해야 합니다.");
+		}
 	}
 
 	/** 예상 비용 = ceil(호스팅 시간) × (요금제 시간당 + 호스팅 시간당). 화면이 보낸 값은 쓰지 않는다. */

@@ -29,7 +29,18 @@ import { formatCapacity } from '@/utils/event';
 import { formatNumber } from '@/utils/format';
 import { eventTypeLabel } from '@/utils/status';
 import { isHttpUrl } from '@/utils/validation';
-import { BANNER_TYPES, MAX_BANNER_BYTES, MAX_COUPONS, MAX_STOCK, emptyCoupon, infoErrors, type ApplyDraft } from './draft';
+import {
+  APPROVE_MIN_LEAD,
+  BANNER_TYPES,
+  HOSTING_LEAD_BEFORE_START,
+  MAX_BANNER_BYTES,
+  MAX_COUPONS,
+  MAX_STOCK,
+  SCHEDULE_GAP,
+  emptyCoupon,
+  infoErrors,
+  type ApplyDraft,
+} from './draft';
 
 interface Props {
   draft: ApplyDraft;
@@ -107,6 +118,8 @@ export default function InfoStep({ draft, plans, plansError, onRetryPlans, onCha
   const [limitOpen, setLimitOpen] = useState(false);
   const [planInfoOpen, setPlanInfoOpen] = useState(false);
   const [urlChecked, setUrlChecked] = useState(false);
+  /** 이름 칸을 건드렸으면(입력 · 포커스 이탈) 오류를 바로 보여 준다 — 처음 열 때부터 빨간 글씨가 뜨지 않게 */
+  const [nameTouched, setNameTouched] = useState(draft.name !== '');
   /** 고른 파일이 형식 · 크기 조건에 맞지 않을 때 */
   const [bannerError, setBannerError] = useState<string | null>(null);
 
@@ -194,7 +207,19 @@ export default function InfoStep({ draft, plans, plansError, onRetryPlans, onCha
               <Label required htmlFor="event-name">
                 이벤트 이름
               </Label>
-              <TextField id="event-name" fullWidth placeholder="예: 9월 얼리버드 타임세일" value={draft.name} onChange={(e) => onChange({ name: e.target.value })} />
+              <TextField
+                id="event-name"
+                fullWidth
+                placeholder="예: 9월 얼리버드 타임세일"
+                value={draft.name}
+                onChange={(e) => {
+                  onChange({ name: e.target.value });
+                  setNameTouched(true);
+                }}
+                onBlur={() => setNameTouched(true)}
+                error={nameTouched && !!errors.name}
+              />
+              <ErrorText show={nameTouched}>{errors.name}</ErrorText>
             </Box>
             <Box>
               <Label required htmlFor="event-period-start">
@@ -222,7 +247,9 @@ export default function InfoStep({ draft, plans, plansError, onRetryPlans, onCha
                 onEnd={(v) => onChange({ hostingEnd: v })}
                 error={hostingPeriodFilled && !!errors.hostingPeriod}
               />
-              <Note>도메인 호스팅 시간(시간 단위)만큼 이벤트 비용에 포함됩니다 · 한국 시각 기준</Note>
+              <Note>
+                호스팅 시작은 지금부터 {APPROVE_MIN_LEAD}분 이후, 이벤트 시작 {HOSTING_LEAD_BEFORE_START + SCHEDULE_GAP}분 전까지 · 도메인 호스팅 시간(시간 단위)만큼 이벤트 비용에 포함됩니다 · 한국 시각 기준
+              </Note>
               <ErrorText show={hostingPeriodFilled}>{errors.hostingPeriod}</ErrorText>
             </Box>
             <Box>

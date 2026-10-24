@@ -22,7 +22,7 @@ interface Props {
   draft: ApplyDraft;
   plans?: Plan[];
   submitting: boolean;
-  /** 서버가 거절한 입력 (400) */
+  /** 제출 직전 재검사에서 걸렸거나 서버가 거절한 입력 (400) */
   serverErrors: string[];
   onPrev: () => void;
   /** 이벤트 정보 단계로 — 서버 오류를 고칠 때 */
