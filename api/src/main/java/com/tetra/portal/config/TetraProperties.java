@@ -25,6 +25,7 @@ public record TetraProperties(
 		@Valid @NotNull @DefaultValue Apply apply,
 		@Valid @NotNull @DefaultValue Csv csv,
 		@Valid @NotNull @DefaultValue Mail mail,
+		@Valid @NotNull @DefaultValue Monitoring monitoring,
 		@NotBlank @DefaultValue("http://localhost:5174") String publicUrl) {
 
 	public record Aws(@NotBlank String region) {
@@ -61,6 +62,22 @@ public record TetraProperties(
 	 */
 	public record Mail(@NotBlank @DefaultValue("Tetra <no-reply@tetraops.cloud>") String from,
 			@NotBlank @DefaultValue("tetra.ops.1@gmail.com") String supportTo) {
+	}
+
+	/**
+	 * 모니터링(UI-TP-11) — Prometheus HTTP API(PROMETHEUS_URL, 인증 없음). 비어 있어도 기동하고 모니터링만 stale로 응답한다.
+	 * 기본값은 Console tetra.monitoring과 같다. cacheTtl = 이벤트별 Prometheus 결과 캐시, refreshTimeout = 갱신 1회 전체 상한.
+	 */
+	public record Monitoring(@DefaultValue("") String prometheusUrl,
+			@NotNull @DefaultValue("PT2S") Duration connectTimeout,
+			@NotNull @DefaultValue("PT3S") Duration readTimeout,
+			@NotNull @DefaultValue("PT15S") Duration cacheTtl,
+			@NotNull @DefaultValue("PT8S") Duration refreshTimeout) {
+
+		public boolean configured() {
+			return prometheusUrl != null && !prometheusUrl.isBlank();
+		}
+
 	}
 
 	/** 테넌트 콘텐츠 버킷 — WF5가 테넌트마다 만든다(계획서 2-1 ②). Portal은 이름만 만든다. */
