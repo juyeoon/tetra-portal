@@ -9,7 +9,6 @@ import com.tetra.portal.common.error.ApiException;
 import com.tetra.portal.common.error.ErrorCode;
 import com.tetra.portal.common.time.Kst;
 import com.tetra.portal.domain.ApplicationStatus;
-import com.tetra.portal.domain.EventStatus;
 import com.tetra.portal.domain.StatusType;
 import com.tetra.portal.domain.platform.Tenant;
 import com.tetra.portal.domain.tenant.Event;
@@ -78,14 +77,7 @@ class EventReader {
 				tenant.getContactName(),
 				new EventResponses.Status(e.getApplicationStatus(), e.getHostingStatus(), e.getEventStatus(),
 						e.getRejectReason(), ResultReader.state(e, summaries.findById(eventId).orElse(null))),
-				couponItems, jsonMapper.readTree(e.getLayoutConfig()), domain(e, tenant), logs);
-	}
-
-	/** Console EventReader와 같은 규칙: 승인됐고 만료 전일 때만 도메인을 보여 준다. */
-	static String domain(Event e, Tenant tenant) {
-		boolean visible = e.getApplicationStatus() == ApplicationStatus.APPROVED
-				&& e.getEventStatus() != EventStatus.EXPIRED && e.getSlug() != null;
-		return visible ? e.getSlug() + "." + e.getTenantId() + "." + tenant.getRootDomain() : null;
+				couponItems, jsonMapper.readTree(e.getLayoutConfig()), EventDomain.of(e, tenant), logs);
 	}
 
 	/** 신청 제출(NULL → APPLYING)만 테넌트, changed_by가 있으면 운영자, 나머지는 시스템. */

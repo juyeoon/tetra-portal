@@ -172,6 +172,12 @@ public final class TestData {
 			return this;
 		}
 
+		/** 이벤트 시작. 호스팅 시작 = −2시간, 종료 = +3시간, 호스팅 종료 = 종료 +2시간 (모니터링 상태 시험) */
+		public EventBuilder startAt(LocalDateTime startAt) {
+			this.startAt = startAt;
+			return this;
+		}
+
 		/** event 행을 다른 테넌트 스키마에 넣는다 (교차 접근 시험). */
 		public EventBuilder inSchemaOf(String schemaTenantId) {
 			this.schemaTenantId = schemaTenantId;

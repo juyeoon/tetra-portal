@@ -64,6 +64,13 @@ tetra:
     # 운영 값은 ECS 환경변수(35-web). 문의 받는 주소 tetra.ops.1@gmail.com — 2026-10-19 확정(계획서 Q13)
     from: ${MAIL_FROM:Tetra <no-reply@tetraops.cloud>}
     support-to: ${MAIL_SUPPORT_TO:tetra.ops.1@gmail.com}
+  # 모니터링(UI-TP-11). PROMETHEUS_URL이 비어 있으면 기동은 하고 모니터링만 stale (ECS: http://prometheus.tetra.internal:9090)
+  monitoring:
+    prometheus-url: ${PROMETHEUS_URL:}
+    connect-timeout: ${PROMETHEUS_CONNECT_TIMEOUT:PT2S}
+    read-timeout: ${PROMETHEUS_READ_TIMEOUT:PT3S}
+    cache-ttl: ${MONITORING_CACHE_TTL:PT15S}
+    refresh-timeout: ${MONITORING_REFRESH_TIMEOUT:PT8S}
   apply:
     # 신청(WF1-1) 뒤 배너 업로드가 이 시간 넘게 끝나지 않으면(태스크 재시작 등) APPLY_FAILED로 정리 (계획서 Q4)
     stale-after: PT10M
