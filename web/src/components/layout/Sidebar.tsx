@@ -24,8 +24,7 @@ interface NavItem {
 const NAV: NavItem[] = [
   { label: '이벤트 내역', to: '/events', icon: <ListAltOutlinedIcon />, isActive: (p) => p.startsWith('/events') && p !== '/events/new' },
   { label: '이벤트 신청', to: '/events/new', icon: <EditCalendarOutlinedIcon /> },
-  // UI-TP-11: 기획 단계 — 비활성(준비중) 메뉴로만 노출
-  { label: '모니터링', icon: <ShowChartOutlinedIcon /> },
+  { label: '모니터링', to: '/monitoring', icon: <ShowChartOutlinedIcon /> },
   { label: '리포트', to: '/reports', icon: <AssessmentOutlinedIcon /> },
   { label: '알림 센터', to: '/notifications', icon: <NotificationsNoneOutlinedIcon /> },
   { label: '설정', to: '/settings', icon: <SettingsOutlinedIcon /> },
