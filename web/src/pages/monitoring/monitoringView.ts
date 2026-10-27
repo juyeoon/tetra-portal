@@ -22,6 +22,7 @@ export const TEXT = {
   noEventDescription: '이벤트 당일 입장 시각부터 이곳에서 실시간 현황을 볼 수 있어요.',
   beforeEntry: '입장 시각부터 데이터가 보여요',
   prepareFailed: '준비 중 문제가 생겨 운영팀이 확인하고 있어요',
+  hostingFailed: '이벤트 페이지 준비가 늦어지고 있어요. 운영팀이 확인하고 있어요.',
   ended: '이벤트가 끝났어요',
   endedDescription: '확정 결과는 이벤트 내역 › 결과 탭에서 볼 수 있어요.',
   serviceDelayed: '요청이 몰려 처리가 늦어지고 있어요. 운영팀이 확인 중이에요',
@@ -140,19 +141,29 @@ export const STEP_TITLE: Record<MonitoringStepKey, string> = {
   AGGREGATE: '결과 집계',
 };
 
+/** 호스팅 시작 실패(HOSTING_FAILED) — 윗줄 안내. 종료 뒤에는 띄우지 않는다(준비 실패 안내와 같음) */
+export const hostingFailed = (m: EventMonitoring) =>
+  m.state !== 'ENDED' && m.steps.some((s) => s.step === 'HOSTING_START' && s.status === 'FAILED');
+
 /**
- * 단계 아래 문구. 품절이면 진행 단계에 품절 시각, 결과 집계는 종료 뒤 · 집계 중 · 완료.
- * CURRENT = 완료되지 않은 첫 단계(api). 호스팅 시작 전에는 호스팅 시작이, 입장 전에는 입장이 CURRENT지만
- * 아직 오지 않은 시점이라 'HH:mm 예정'. 준비 실패로 입장 시각이 지났으면 입장은 '준비 중'.
+ * 단계 아래 문구. 호스팅 시작 · 입장은 실제 상태(api): 실패면 '시작 지연' · '입장 지연', 예정 시각이 지났는데 아직이면 '확인 중',
+ * 완료 시각은 실제 시각(없으면 예정 시각). 입장 중이면 열린 시각부터 '진행 중'.
+ * 품절이면 진행 단계에 품절 시각, 결과 집계는 종료 뒤 · 집계 중 · 완료.
  */
 export function stepCaption(step: MonitoringStep, m: EventMonitoring, nowMs: number) {
   if (step.step === 'AGGREGATE') {
     return step.status === 'DONE' ? '완료' : step.status === 'CURRENT' ? '집계 중' : '종료 뒤';
   }
+  if (step.status === 'FAILED') return step.step === 'HOSTING_START' ? '시작 지연' : '입장 지연';
+  if (step.delayed) return '확인 중';
   const t = clockOf(step.at, nowMs);
-  if (step.step === 'HOSTING_START' && step.status === 'CURRENT') return `${t} 예정`;
-  if (step.step === 'ENTRY' && m.state === 'BEFORE_ENTRY') {
-    return entryDelayed(m, nowMs) ? '준비 중' : `${t} 예정`;
+  const actual = clockOf(step.actualAt ?? step.at, nowMs);
+  if (step.step === 'HOSTING_START') return step.status === 'DONE' ? `${actual} 완료` : `${t} 예정`;
+  if (step.step === 'ENTRY') {
+    if (step.status === 'DONE') return `${actual} 완료`;
+    // 지연이 아닌데 입장 시각이 지났으면 열린 것(OPEN). 시각 전에 먼저 열려도(실제 시각 있음) 진행 중
+    const opened = step.actualAt != null || (step.at != null && nowMs >= msOf(step.at));
+    return step.status === 'CURRENT' && opened ? `${actual} 시작 · 진행 중` : `${t} 예정`;
   }
   if (step.step === 'LIVE' && m.state === 'SOLD_OUT' && m.header.soldOutAt) {
     return `${t} 시작 · ${clockOf(m.header.soldOutAt, nowMs)} 품절`;

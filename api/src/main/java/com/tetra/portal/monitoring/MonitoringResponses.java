@@ -66,12 +66,20 @@ public final class MonitoringResponses {
 
 	public enum StepStatus {
 
-		DONE, CURRENT, UPCOMING
+		DONE, CURRENT, UPCOMING,
+		@Schema(description = "호스팅 시작(HOSTING_FAILED) · 입장(OPEN_FAILED)만. 사유는 내리지 않는다")
+		FAILED
 
 	}
 
-	/** at = 그 단계 시각(AGGREGATE는 null — "종료 뒤"). AGGREGATE는 결과가 준비되면 DONE, 아니면 종료 뒤 CURRENT(집계 중) */
-	public record Step(StepKey step, OffsetDateTime at, StepStatus status) {
+	/**
+	 * at = 그 단계 예정 시각(AGGREGATE는 null — "종료 뒤"). AGGREGATE는 결과가 준비되면 DONE, 아니면 종료 뒤 CURRENT(집계 중).
+	 * 호스팅 시작 · 입장은 실제 상태로 정한다(actualAt · delayed도 이 두 단계만).
+	 */
+	public record Step(StepKey step, OffsetDateTime at,
+			@Schema(description = "실제 시각 — 처음 HOSTING · OPEN이 된 시각(상태 로그). 아직이거나 로그가 없으면 null") OffsetDateTime actualAt,
+			StepStatus status,
+			@Schema(description = "예정 시각이 지났는데 아직 HOSTING · OPEN이 아님(실패 제외)") boolean delayed) {
 	}
 
 	public enum Service {

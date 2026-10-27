@@ -189,7 +189,8 @@ export interface PortalSettings {
 export type MonitoringPhase = 'BEFORE_ENTRY' | 'ENTRY_OPEN' | 'LIVE' | 'SOLD_OUT' | 'ENDED';
 export type MonitoringGroup = 'LIVE' | 'TODAY' | 'ENDED';
 export type MonitoringStepKey = 'HOSTING_START' | 'ENTRY' | 'LIVE' | 'END' | 'AGGREGATE';
-export type MonitoringStepStatus = 'DONE' | 'CURRENT' | 'UPCOMING';
+/** FAILED는 호스팅 시작(HOSTING_FAILED) · 입장(OPEN_FAILED)만 */
+export type MonitoringStepStatus = 'DONE' | 'CURRENT' | 'UPCOMING' | 'FAILED';
 /** 서비스 표시 — 정상 · 지연 중 · 확인 중 */
 export type MonitoringService = 'NORMAL' | 'DELAYED' | 'CHECKING';
 
@@ -213,9 +214,13 @@ export interface MonitoringEventList {
 
 export interface MonitoringStep {
   step: MonitoringStepKey;
-  /** AGGREGATE는 null */
+  /** 예정 시각. AGGREGATE는 null */
   at: string | null;
+  /** 실제 시각(처음 HOSTING · OPEN이 된 시각) — 호스팅 시작 · 입장만, 아직이거나 로그가 없으면 null */
+  actualAt: string | null;
   status: MonitoringStepStatus;
+  /** 예정 시각이 지났는데 아직 HOSTING · OPEN이 아님(실패 제외) — 호스팅 시작 · 입장만 */
+  delayed: boolean;
 }
 
 export interface MonitoringKpi {
