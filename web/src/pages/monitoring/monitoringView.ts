@@ -22,7 +22,9 @@ export const TEXT = {
   noEventDescription: '이벤트 당일 입장 시각부터 이곳에서 실시간 현황을 볼 수 있어요.',
   beforeEntry: '입장 시각부터 데이터가 보여요',
   prepareFailed: '준비 중 문제가 생겨 운영팀이 확인하고 있어요',
-  hostingFailed: '이벤트 페이지 준비가 늦어지고 있어요. 운영팀이 확인하고 있어요.',
+  unavailable: '이 이벤트는 열리지 않아 모니터링할 수 없어요.',
+  unavailableDescription: '진행 기록은 이벤트 내역에서 볼 수 있어요.',
+  unavailableItem: '모니터링 불가',
   ended: '이벤트가 끝났어요',
   endedDescription: '확정 결과는 이벤트 내역 › 결과 탭에서 볼 수 있어요.',
   serviceDelayed: '요청이 몰려 처리가 늦어지고 있어요. 운영팀이 확인 중이에요',
@@ -122,6 +124,9 @@ export function headlineOf(m: EventMonitoring, nowMs: number): Headline {
       return { label: '종료까지', value: until(p.hostingEndAt) };
     case 'ENDED':
       return { label: '종료', value: clockOf(p.hostingEndAt, nowMs) };
+    case 'UNAVAILABLE':
+      // 화면은 진행 단계 카드 대신 빈 상태만 그린다
+      return { label: '모니터링 불가', value: EMPTY };
   }
 }
 
@@ -141,21 +146,19 @@ export const STEP_TITLE: Record<MonitoringStepKey, string> = {
   AGGREGATE: '결과 집계',
 };
 
-/** 호스팅 시작 실패(HOSTING_FAILED) — 윗줄 안내. 종료 뒤에는 띄우지 않는다(준비 실패 안내와 같음) */
-export const hostingFailed = (m: EventMonitoring) =>
-  m.state !== 'ENDED' && m.steps.some((s) => s.step === 'HOSTING_START' && s.status === 'FAILED');
-
 /**
- * 단계 아래 문구. 호스팅 시작 · 입장은 실제 상태(api): 실패면 '시작 지연' · '입장 지연', 예정 시각이 지났는데 아직이면 '확인 중',
- * 완료 시각은 실제 시각(없으면 예정 시각). 입장 중이면 열린 시각부터 '진행 중'.
+ * 단계 아래 문구. 완료는 실제 기록(api): 완료 시각은 실제 시각(없으면 예정 시각), 입장 중이면 열린 시각부터 '진행 중'.
+ * 실패는 입장만('입장 지연'), 열리지 않은 채 끝난 이벤트의 뒤 단계는 '진행 안 됨'.
+ * 예정 시각이 지났는데 아직이면 호스팅 시작 · 입장은 '확인 중', 종료는 '종료 처리 중'(WF4가 끝날 때까지).
  * 품절이면 진행 단계에 품절 시각, 결과 집계는 종료 뒤 · 집계 중 · 완료.
  */
 export function stepCaption(step: MonitoringStep, m: EventMonitoring, nowMs: number) {
+  if (step.status === 'SKIPPED') return '진행 안 됨';
   if (step.step === 'AGGREGATE') {
     return step.status === 'DONE' ? '완료' : step.status === 'CURRENT' ? '집계 중' : '종료 뒤';
   }
-  if (step.status === 'FAILED') return step.step === 'HOSTING_START' ? '시작 지연' : '입장 지연';
-  if (step.delayed) return '확인 중';
+  if (step.status === 'FAILED') return '입장 지연';
+  if (step.delayed) return step.step === 'END' ? '종료 처리 중' : '확인 중';
   const t = clockOf(step.at, nowMs);
   const actual = clockOf(step.actualAt ?? step.at, nowMs);
   if (step.step === 'HOSTING_START') return step.status === 'DONE' ? `${actual} 완료` : `${t} 예정`;
@@ -165,6 +168,7 @@ export function stepCaption(step: MonitoringStep, m: EventMonitoring, nowMs: num
     const opened = step.actualAt != null || (step.at != null && nowMs >= msOf(step.at));
     return step.status === 'CURRENT' && opened ? `${actual} 시작 · 진행 중` : `${t} 예정`;
   }
+  if (step.step === 'END') return step.status === 'DONE' ? `${t} 완료` : `${t} 예정`;
   if (step.step === 'LIVE' && m.state === 'SOLD_OUT' && m.header.soldOutAt) {
     return `${t} 시작 · ${clockOf(m.header.soldOutAt, nowMs)} 품절`;
   }
@@ -216,13 +220,46 @@ export function itemCaption(item: MonitoringEventItem, nowMs: number) {
   return `종료 ${item.hostingEndAt.slice(5, 10)}`;
 }
 
-/** 처음 고를 이벤트: ?eventId=가 목록에 있으면 그것, 아니면 defaultEventId */
+/**
+ * 처음 고를 이벤트: ?eventId=가 있으면 목록에 없어도 그것(열리지 않은 이벤트 · 지난 이벤트를 URL로 직접 — 서버가 정한다.
+ * 없거나 권한 없음은 404 → 화면이 ?eventId=를 지우고 다시 고른다), 아니면 defaultEventId
+ */
 export function pickEventId(list: MonitoringEventList, raw: string | null): number | null {
-  if (raw && /^\d{1,10}$/.test(raw)) {
-    const id = Number(raw);
-    if (list.events.some((e) => e.eventId === id)) return id;
-  }
+  if (raw && /^\d{1,10}$/.test(raw)) return Number(raw);
   return list.defaultEventId;
+}
+
+/** 드롭다운 항목 하나 */
+export interface EventOption {
+  eventId: number;
+  label: string;
+}
+
+/** 현황 응답 → 항목 끝 상태(목록에 없는 이벤트를 보고 있을 때). 열리지 않은 이벤트는 '모니터링 불가' */
+export function detailCaption(m: EventMonitoring, nowMs: number) {
+  if (m.state === 'UNAVAILABLE') return TEXT.unavailableItem;
+  const group = m.state === 'ENDED' ? 'ENDED' : m.state === 'BEFORE_ENTRY' ? 'TODAY' : 'LIVE';
+  const p = m.period;
+  return itemCaption(
+    { eventId: m.eventId, name: m.name, group, state: m.state, prepareFailed: m.prepareFailed, entryAt: p.entryAt, startAt: p.startAt, hostingEndAt: p.hostingEndAt },
+    nowMs,
+  );
+}
+
+/**
+ * 드롭다운 항목: 목록 + 보고 있는 이벤트가 목록에 없으면(URL로 직접 · 종료 7일 경과 · 보는 중 열리지 않게 됨) 현황 응답으로 맨 위에 하나.
+ * 목록이 아직 옛 값이어도 현황이 열리지 않은 이벤트라고 하면 그 항목은 '모니터링 불가'.
+ */
+export function selectOptions(events: MonitoringEventItem[], selected: number | null, m: EventMonitoring | undefined, nowMs: number): EventOption[] {
+  const viewing = m && m.eventId === selected ? m : null;
+  const options = events.map((e) => ({
+    eventId: e.eventId,
+    label: `${e.name} · ${viewing?.eventId === e.eventId && viewing.state === 'UNAVAILABLE' ? TEXT.unavailableItem : itemCaption(e, nowMs)}`,
+  }));
+  if (viewing && !events.some((e) => e.eventId === viewing.eventId)) {
+    options.unshift({ eventId: viewing.eventId, label: `${viewing.name} · ${detailCaption(viewing, nowMs)}` });
+  }
+  return options;
 }
 
 /**
@@ -231,7 +268,8 @@ export function pickEventId(list: MonitoringEventList, raw: string | null): numb
  * 마지막 응답의 serverTime이 이미 지난 경계는 해당 없음(그 응답이 이미 반영).
  */
 export function boundaryToRefetch(m: EventMonitoring, nowMs: number, fired: ReadonlySet<string>): string | null {
-  if (m.state === 'ENDED') return null;
+  // 열리지 않은 이벤트는 시각으로 상태가 바뀌지 않는다(15초 주기로 회복만 확인)
+  if (m.state === 'ENDED' || m.state === 'UNAVAILABLE') return null;
   const server = msOf(m.serverTime);
   for (const at of [m.period.entryAt, m.period.startAt, m.period.hostingEndAt]) {
     const key = `${m.eventId}@${at}`;

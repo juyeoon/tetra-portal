@@ -40,7 +40,8 @@ public final class MonitoringResponses {
 	/**
 	 * 이벤트 하나. state · serverTime · period · steps · header.endsInSec는 요청마다 현재 시각으로 계산하고,
 	 * Prometheus 값(kpi · series · rejects5m)만 이벤트별로 15초 캐시한다.
-	 * kpi · series는 ENTRY_OPEN · LIVE · SOLD_OUT에서만(BEFORE_ENTRY · ENDED는 null, Prometheus 조회 안 함).
+	 * kpi · series는 ENTRY_OPEN · LIVE · SOLD_OUT에서만(BEFORE_ENTRY · ENDED · UNAVAILABLE은 null, Prometheus 조회 안 함).
+	 * UNAVAILABLE(배포 · 호스팅 시작 실패)은 steps가 빈 목록이고 header 값도 모두 null — 화면은 빈 상태만.
 	 */
 	@Schema(name = "EventMonitoring")
 	public record EventMonitoring(Long eventId, String name, MonitoringPhase state,
@@ -67,19 +68,21 @@ public final class MonitoringResponses {
 	public enum StepStatus {
 
 		DONE, CURRENT, UPCOMING,
-		@Schema(description = "호스팅 시작(HOSTING_FAILED) · 입장(OPEN_FAILED)만. 사유는 내리지 않는다")
-		FAILED
+		@Schema(description = "입장만 — OPEN_FAILED이거나 OPEN이 한 번도 안 된 채 종료. 사유는 내리지 않는다")
+		FAILED,
+		@Schema(description = "진행 안 됨 — OPEN이 한 번도 안 된 채 끝난 이벤트의 이벤트 진행 · 종료 · 결과 집계")
+		SKIPPED
 
 	}
 
 	/**
-	 * at = 그 단계 예정 시각(AGGREGATE는 null — "종료 뒤"). AGGREGATE는 결과가 준비되면 DONE, 아니면 종료 뒤 CURRENT(집계 중).
-	 * 호스팅 시작 · 입장은 실제 상태로 정한다(actualAt · delayed도 이 두 단계만).
+	 * at = 그 단계 예정 시각(AGGREGATE는 null — "종료 뒤"). 완료는 실제 기록(상태 · 전이 로그)으로 정한다.
+	 * AGGREGATE는 결과가 준비되면 DONE, 종료 칸이 끝나면 CURRENT(집계 중). actualAt은 호스팅 시작 · 입장만.
 	 */
 	public record Step(StepKey step, OffsetDateTime at,
 			@Schema(description = "실제 시각 — 처음 HOSTING · OPEN이 된 시각(상태 로그). 아직이거나 로그가 없으면 null") OffsetDateTime actualAt,
 			StepStatus status,
-			@Schema(description = "예정 시각이 지났는데 아직 HOSTING · OPEN이 아님(실패 제외)") boolean delayed) {
+			@Schema(description = "예정 시각이 지났는데 아직 — 호스팅 시작 · 입장(HOSTING · OPEN 전, 실패 제외), 종료(hosting_end_at 뒤 ENDED · EXPIRED 전 또는 END_FAILED)") boolean delayed) {
 	}
 
 	public enum Service {

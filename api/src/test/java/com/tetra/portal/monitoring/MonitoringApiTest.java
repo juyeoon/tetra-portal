@@ -1,6 +1,7 @@
 package com.tetra.portal.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -215,6 +216,7 @@ class MonitoringApiTest extends IntegrationTest {
 	@Test
 	void 종료와_입장_전은_Prometheus를_읽지_않고_kpi_series가_없다() throws Exception {
 		data.event(601, A).approved("ENDED", "EXPIRED", "endd0601").startAt(NOW.minusHours(6)).insert();
+		data.statusLog(A, 601, "EVENT", "SCHEDULED", "OPEN", NOW.minusHours(6).minusMinutes(5), null, null);
 		data.event(602, A).approved("DEPLOYED", "SCHEDULED", "prep0602").startAt(NOW.plusHours(3)).insert();
 
 		mvc.perform(get("/api/portal/monitoring/events/{id}", 601).cookie(loginCookie(A)))
@@ -223,6 +225,7 @@ class MonitoringApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.kpi").doesNotExist())
 			.andExpect(jsonPath("$.series").doesNotExist())
 			.andExpect(jsonPath("$.header.endsInSec").doesNotExist())
+			.andExpect(jsonPath("$.steps[3].status").value("DONE")) // 종료 기록(ENDED · EXPIRED)
 			.andExpect(jsonPath("$.steps[4].step").value("AGGREGATE"))
 			.andExpect(jsonPath("$.steps[4].status").value("CURRENT"));
 		mvc.perform(get("/api/portal/monitoring/events/{id}", 602).cookie(loginCookie(A)))
@@ -238,12 +241,10 @@ class MonitoringApiTest extends IntegrationTest {
 
 	@Test
 	void 호스팅_시작_칸은_시각이_아니라_실제_상태와_첫_전이_로그로() throws Exception {
-		// 셋 다 호스팅 시작(시작 − 2시간 = 30분 전)이 지났고 입장 전
+		// 둘 다 호스팅 시작(시작 − 2시간 = 30분 전)이 지났고 입장 전
 		data.event(603, A).approved("HOSTING", "SCHEDULED", "host0603").startAt(NOW.plusMinutes(90)).insert();
 		data.statusLog(A, 603, "HOSTING", "DEPLOYED", "HOSTING", NOW.minusMinutes(29), null, null);
 		data.event(604, A).approved("DEPLOYED", "SCHEDULED", "wait0604").startAt(NOW.plusMinutes(90)).insert();
-		data.event(605, A).approved("HOSTING_FAILED", "SCHEDULED", "fail0605").startAt(NOW.plusMinutes(90)).insert();
-		data.statusLog(A, 605, "HOSTING", "DEPLOYED", "HOSTING_FAILED", NOW.minusMinutes(27), "페이지 확인 시간 초과", null);
 
 		mvc.perform(get("/api/portal/monitoring/events/{id}", 603).cookie(loginCookie(A)))
 			.andExpect(status().isOk())
@@ -257,12 +258,43 @@ class MonitoringApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.steps[0].status").value("CURRENT"))
 			.andExpect(jsonPath("$.steps[0].delayed").value(true))
 			.andExpect(jsonPath("$.steps[1].status").value("UPCOMING"));
-		mvc.perform(get("/api/portal/monitoring/events/{id}", 605).cookie(loginCookie(A)))
+	}
+
+	@Test
+	void OPEN이_한_번도_안_된_채_끝난_이벤트는_진행_종료_집계가_진행_안_됨() throws Exception {
+		// WF4가 EXPIRED로 바꿨지만 OPEN 로그가 없다(준비 실패 뒤 종료)
+		data.event(606, A).approved("ENDED", "EXPIRED", "nrun0606").startAt(NOW.minusHours(6)).insert();
+		data.statusLog(A, 606, "EVENT", "SCHEDULED", "OPEN_FAILED", NOW.minusHours(6).minusMinutes(10), "health 실패", null);
+
+		mvc.perform(get("/api/portal/monitoring/events/{id}", 606).cookie(loginCookie(A)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.state").value("BEFORE_ENTRY")) // 상태는 시각 기준 그대로
-			.andExpect(jsonPath("$.steps[0].status").value("FAILED"))
-			.andExpect(jsonPath("$.steps[0].delayed").value(false))
-			.andExpect(jsonPath("$.steps[1].status").value("UPCOMING"));
+			.andExpect(jsonPath("$.state").value("ENDED"))
+			.andExpect(jsonPath("$.steps[*].status").value(contains("DONE", "FAILED", "SKIPPED", "SKIPPED", "SKIPPED")));
+	}
+
+	@Test
+	void 배포_호스팅_시작_실패는_목록에서_빼고_상세는_빈_상태() throws Exception {
+		liveEvent(501, A);
+		// 시각으로는 진행 중(호스팅 실패) · 종료(배포 실패 — 지금은 드롭다운에 "종료"로 보이던 경우)
+		data.event(605, A).approved("HOSTING_FAILED", "OPEN_FAILED", "fail0605").startAt(NOW.minusMinutes(10)).insert();
+		data.event(607, A).approved("DEPLOY_FAILED", "SCHEDULED", "fail0607").startAt(NOW.minusHours(6)).insert();
+
+		mvc.perform(get("/api/portal/monitoring/events").cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.events[*].eventId").value(contains(501)))
+			.andExpect(jsonPath("$.defaultEventId").value(501));
+		for (long id : new long[] { 605, 607 }) {
+			mvc.perform(get("/api/portal/monitoring/events/{id}", id).cookie(loginCookie(A)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.state").value("UNAVAILABLE"))
+				.andExpect(jsonPath("$.prepareFailed").value(false))
+				.andExpect(jsonPath("$.steps.length()").value(0))
+				.andExpect(jsonPath("$.kpi").doesNotExist())
+				.andExpect(jsonPath("$.series").doesNotExist())
+				.andExpect(jsonPath("$.header.endsInSec").doesNotExist())
+				.andExpect(jsonPath("$.period.startAt").exists());
+		}
+		assertThat(prometheus.requests()).isEmpty();
 	}
 
 	// ---- 데이터 지연 ----

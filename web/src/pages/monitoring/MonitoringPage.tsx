@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined';
+import EventBusyOutlinedIcon from '@mui/icons-material/EventBusyOutlined';
 import HourglassEmptyRoundedIcon from '@mui/icons-material/HourglassEmptyRounded';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
@@ -12,13 +13,12 @@ import SectionTitle from '@/components/common/SectionTitle';
 import StateMessage from '@/components/common/StateMessage';
 import PageHeader from '@/components/layout/PageHeader';
 import { font, size, text } from '@/theme/theme';
-import type { MonitoringEventItem } from '@/types';
 import IntegrationCheck from './components/IntegrationCheck';
 import KpiCards from './components/KpiCards';
 import PerMinuteChart from './components/PerMinuteChart';
 import ProgressCard from './components/ProgressCard';
 import StockChart from './components/StockChart';
-import { POLL_INTERVAL_MS, TEXT, boundaryToRefetch, estimateNow, itemCaption, periodText, pickEventId, showsMetrics } from './monitoringView';
+import { POLL_INTERVAL_MS, TEXT, boundaryToRefetch, estimateNow, periodText, pickEventId, selectOptions, showsMetrics } from './monitoringView';
 
 /** 1초마다 다시 그린다 — 남은 시간 · 경계 시각 확인용 */
 function useSecondTick() {
@@ -33,8 +33,9 @@ function useSecondTick() {
 /**
  * UI-TP-11 모니터링 — 이벤트 실시간 현황(15초마다 갱신되는 근사값, 확정 결과는 결과 탭).
  * 목록 · 현황을 15초마다 같이 새로 고친다(탭이 숨겨지면 멈춤, 종료 이벤트는 현황을 한 번만).
- * 선택은 처음 한 번 정한다(?eventId= → defaultEventId). 직접 고르면 ?eventId=에 남기고, 목록이 새로 와도 바꾸지 않는다.
- * 404(목록에서 빠짐 · 권한 없음)면 ?eventId=를 지우고 새 목록의 defaultEventId로. 401은 client가 로그인 화면으로.
+ * 선택은 처음 한 번 정한다(?eventId= — 목록에 없어도 → defaultEventId). 직접 고르면 ?eventId=에 남기고, 목록이 새로 와도 바꾸지 않는다.
+ * 404(없음 · 승인 전 · 권한 없음)면 ?eventId=를 지우고 새 목록의 defaultEventId로. 401은 client가 로그인 화면으로.
+ * 열리지 않은 이벤트(UNAVAILABLE)는 빈 상태만 — 갱신은 계속해 재실행으로 회복되면 그대로 현황이 보인다.
  */
 export default function MonitoringPage() {
   const [params, setParams] = useSearchParams();
@@ -48,8 +49,6 @@ export default function MonitoringPage() {
   });
   const tick = useSecondTick();
   const fired = useRef(new Set<string>());
-  // 드롭다운에서 빠진 이벤트를 보고 있을 때(종료 7일 경과 등) 항목을 남겨 둔다
-  const lastItem = useRef<MonitoringEventItem | null>(null);
 
   // 새 목록이 왔을 때만 고른다 — 404 뒤에는 새로 받은 목록으로, 볼 이벤트가 없다가 생기면 그때
   useEffect(() => {
@@ -110,9 +109,6 @@ export default function MonitoringPage() {
   }
 
   const events = list.data.events;
-  const current = events.find((e) => e.eventId === selected) ?? (lastItem.current?.eventId === selected ? lastItem.current : null);
-  if (current) lastItem.current = current;
-  const options = current && !events.includes(current) ? [current, ...events] : events;
 
   if (events.length === 0 && selected === null) {
     return (
@@ -127,6 +123,9 @@ export default function MonitoringPage() {
   const failed = detail.error != null && detail.error.status !== 401 && detail.error.status !== 404;
   const delayed = m != null && (m.stale || failed);
   const today = m ? nowMs : Date.now();
+  // 목록에 없는 이벤트(URL로 직접 · 종료 7일 경과 · 열리지 않게 됨)는 현황 응답으로 항목을 만든다 — 응답 전에는 선택을 비워 둔다
+  const options = selectOptions(events, selected, m, today);
+  const value = selected !== null && options.some((o) => o.eventId === selected) ? selected : '';
 
   return (
     <>
@@ -141,13 +140,13 @@ export default function MonitoringPage() {
             id="monitoring-event"
             select
             size="small"
-            value={selected ?? ''}
+            value={value}
             onChange={(e) => choose(Number(e.target.value))}
             sx={{ minWidth: { xs: 0, md: 360 }, flex: { xs: 1, md: 'none' } }}
           >
-            {options.map((e) => (
-              <MenuItem key={e.eventId} value={e.eventId}>
-                {e.name} · {itemCaption(e, today)}
+            {options.map((o) => (
+              <MenuItem key={o.eventId} value={o.eventId}>
+                {o.label}
               </MenuItem>
             ))}
           </TextField>
@@ -162,6 +161,13 @@ export default function MonitoringPage() {
 
       {!m ? (
         failed ? <ErrorView message={detail.error!.message} onRetry={detail.refresh} /> : <LoadingView />
+      ) : m.state === 'UNAVAILABLE' ? (
+        // 배포 · 호스팅 시작 실패 — 진행 단계 · 지표 없이 안내만. 15초 갱신은 계속(재실행으로 회복되면 바로 보인다)
+        <StateMessage icon={<EventBusyOutlinedIcon />} tone="grey" title={TEXT.unavailable} description={TEXT.unavailableDescription}>
+          <Button component={RouterLink} to={`/events/${m.eventId}`} variant="contained" sx={{ mt: 2 }}>
+            이벤트 내역
+          </Button>
+        </StateMessage>
       ) : (
         <Stack spacing={4}>
           <ProgressCard m={m} nowMs={nowMs} delayed={delayed} />

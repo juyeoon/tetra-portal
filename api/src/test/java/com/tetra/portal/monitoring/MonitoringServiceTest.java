@@ -266,6 +266,32 @@ class MonitoringServiceTest {
 		verify(collector, never()).collect(anyString(), anyLong(), any(), anyLong());
 	}
 
+	@Test
+	void 배포_호스팅_시작_실패는_빈_상태만_Prometheus를_읽지_않는다() {
+		MonitoringService service = service("http://prometheus");
+		clock.set(START.plusMinutes(10)); // 시각으로는 진행 중
+		for (EventDetail d : List.of(detail(EventStatus.SCHEDULED, HostingStatus.DEPLOY_FAILED),
+				detail(EventStatus.OPEN_FAILED, HostingStatus.HOSTING_FAILED))) {
+			when(reader.event(eq(1L), any())).thenReturn(d);
+			EventMonitoring r = service.event(TENANT, 1L);
+			assertThat(r.state()).isEqualTo(MonitoringPhase.UNAVAILABLE);
+			assertThat(r.prepareFailed()).isFalse(); // 준비 실패 안내 대신 빈 상태
+			assertThat(r.steps()).isEmpty();
+			assertThat(r.header().endsInSec()).isNull();
+			assertThat(r.header().soldOutAt()).isNull();
+			assertThat(r.header().service()).isNull();
+			assertThat(r.kpi()).isNull();
+			assertThat(r.series()).isNull();
+			assertThat(r.rejects5m()).isNull();
+			assertThat(r.period().startAt().toLocalDateTime()).isEqualTo(START); // 이벤트 기간은 그대로
+		}
+		verify(collector, never()).collect(anyString(), anyLong(), any(), anyLong());
+
+		// 재실행으로 HOSTING이 되면 다시 진행 중
+		when(reader.event(eq(1L), any())).thenReturn(detail(EventStatus.OPEN, HostingStatus.HOSTING));
+		assertThat(service.event(TENANT, 1L).state()).isEqualTo(MonitoringPhase.LIVE);
+	}
+
 	// ---- 드롭다운 ----
 
 	static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 27, 14, 30);
@@ -309,6 +335,28 @@ class MonitoringServiceTest {
 		var empty = MonitoringService.eventList(List.of(), NOW);
 		assertThat(empty.events()).isEmpty();
 		assertThat(empty.defaultEventId()).isNull();
+	}
+
+	@Test
+	void 배포_호스팅_시작_실패는_목록과_기본_선택에서_빼고_회복되면_다시_나온다() {
+		var deployFailed = view(10, NOW.minusMinutes(10), NOW.plusMinutes(30), EventStatus.SCHEDULED,
+				HostingStatus.DEPLOY_FAILED);
+		var hostingFailed = view(11, NOW.minusMinutes(10), NOW.plusMinutes(30), EventStatus.OPEN_FAILED,
+				HostingStatus.HOSTING_FAILED);
+		// 종료 시각이 지난 배포 실패 — 지금은 "종료"로 보이던 경우
+		var deployFailedEnded = view(12, NOW.minusDays(1), NOW.minusDays(1).plusHours(1), EventStatus.SCHEDULED,
+				HostingStatus.DEPLOY_FAILED);
+		var today = view(4, NOW.plusHours(2), NOW.plusHours(3), EventStatus.SCHEDULED, HostingStatus.DEPLOYED);
+
+		var list = MonitoringService.eventList(List.of(deployFailed, hostingFailed, deployFailedEnded, today), NOW);
+		assertThat(list.events()).extracting(i -> i.eventId()).containsExactly(4L);
+		assertThat(list.defaultEventId()).isEqualTo(4L);
+		assertThat(MonitoringService.eventList(List.of(deployFailed, hostingFailed), NOW).defaultEventId()).isNull();
+
+		var recovered = view(11, NOW.minusMinutes(10), NOW.plusMinutes(30), EventStatus.OPEN, HostingStatus.HOSTING);
+		var again = MonitoringService.eventList(List.of(deployFailed, recovered, today), NOW);
+		assertThat(again.events()).extracting(i -> i.eventId()).containsExactly(11L, 4L);
+		assertThat(again.defaultEventId()).isEqualTo(11L);
 	}
 
 	@Test

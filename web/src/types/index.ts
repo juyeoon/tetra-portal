@@ -185,12 +185,15 @@ export interface PortalSettings {
 
 /* ---------- 모니터링 (UI-TP-11) — api MonitoringResponses와 같은 모양 ---------- */
 
-/** BEFORE_ENTRY 입장 전 · ENTRY_OPEN 입장 ~ 시작 · LIVE 진행 중 · SOLD_OUT 품절 · ENDED 종료(hosting_end_at) */
-export type MonitoringPhase = 'BEFORE_ENTRY' | 'ENTRY_OPEN' | 'LIVE' | 'SOLD_OUT' | 'ENDED';
+/**
+ * BEFORE_ENTRY 입장 전 · ENTRY_OPEN 입장 ~ 시작 · LIVE 진행 중 · SOLD_OUT 품절 · ENDED 종료(hosting_end_at) ·
+ * UNAVAILABLE 열리지 않음(배포 · 호스팅 시작 실패 — 목록에 없고 상세는 빈 상태)
+ */
+export type MonitoringPhase = 'BEFORE_ENTRY' | 'ENTRY_OPEN' | 'LIVE' | 'SOLD_OUT' | 'ENDED' | 'UNAVAILABLE';
 export type MonitoringGroup = 'LIVE' | 'TODAY' | 'ENDED';
 export type MonitoringStepKey = 'HOSTING_START' | 'ENTRY' | 'LIVE' | 'END' | 'AGGREGATE';
-/** FAILED는 호스팅 시작(HOSTING_FAILED) · 입장(OPEN_FAILED)만 */
-export type MonitoringStepStatus = 'DONE' | 'CURRENT' | 'UPCOMING' | 'FAILED';
+/** FAILED는 입장만(OPEN_FAILED · 열리지 않은 채 종료). SKIPPED = 진행 안 됨(열리지 않은 채 끝난 이벤트의 진행 · 종료 · 집계) */
+export type MonitoringStepStatus = 'DONE' | 'CURRENT' | 'UPCOMING' | 'FAILED' | 'SKIPPED';
 /** 서비스 표시 — 정상 · 지연 중 · 확인 중 */
 export type MonitoringService = 'NORMAL' | 'DELAYED' | 'CHECKING';
 
@@ -219,7 +222,7 @@ export interface MonitoringStep {
   /** 실제 시각(처음 HOSTING · OPEN이 된 시각) — 호스팅 시작 · 입장만, 아직이거나 로그가 없으면 null */
   actualAt: string | null;
   status: MonitoringStepStatus;
-  /** 예정 시각이 지났는데 아직 HOSTING · OPEN이 아님(실패 제외) — 호스팅 시작 · 입장만 */
+  /** 예정 시각이 지났는데 아직 — 호스팅 시작 · 입장(HOSTING · OPEN 전), 종료(WF4 결과 전 · END_FAILED) */
   delayed: boolean;
 }
 
