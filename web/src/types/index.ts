@@ -182,3 +182,80 @@ export interface PortalSettings {
   emailEnabled: boolean;
   slackAvailable: boolean;
 }
+
+/* ---------- 모니터링 (UI-TP-11) — api MonitoringResponses와 같은 모양 ---------- */
+
+/** BEFORE_ENTRY 입장 전 · ENTRY_OPEN 입장 ~ 시작 · LIVE 진행 중 · SOLD_OUT 품절 · ENDED 종료(hosting_end_at) */
+export type MonitoringPhase = 'BEFORE_ENTRY' | 'ENTRY_OPEN' | 'LIVE' | 'SOLD_OUT' | 'ENDED';
+export type MonitoringGroup = 'LIVE' | 'TODAY' | 'ENDED';
+export type MonitoringStepKey = 'HOSTING_START' | 'ENTRY' | 'LIVE' | 'END' | 'AGGREGATE';
+export type MonitoringStepStatus = 'DONE' | 'CURRENT' | 'UPCOMING';
+/** 서비스 표시 — 정상 · 지연 중 · 확인 중 */
+export type MonitoringService = 'NORMAL' | 'DELAYED' | 'CHECKING';
+
+/** 드롭다운 항목. state는 시각 기준(목록은 SOLD_OUT이 나오지 않는다) */
+export interface MonitoringEventItem {
+  eventId: number;
+  name: string;
+  group: MonitoringGroup;
+  state: MonitoringPhase;
+  prepareFailed: boolean;
+  entryAt: string;
+  startAt: string;
+  hostingEndAt: string;
+}
+
+export interface MonitoringEventList {
+  events: MonitoringEventItem[];
+  /** 진행 중 → 입장 중 → 가장 가까운 예정 → 가장 최근 종료. 목록이 비면 null */
+  defaultEventId: number | null;
+}
+
+export interface MonitoringStep {
+  step: MonitoringStepKey;
+  /** AGGREGATE는 null */
+  at: string | null;
+  status: MonitoringStepStatus;
+}
+
+export interface MonitoringKpi {
+  issued: number | null;
+  stock: number;
+  soldOutCount: number | null;
+  /** 대기 인원(추정). 시작 전 0 */
+  waiting: number | null;
+  /** null = 모름 · 처리 0 · 품절 · 시작 전, 0 = 1분 이내 */
+  waitMinutes: number | null;
+  activeSessions: number | null;
+  planCapacity: number | null;
+  planName: string;
+  peak: { value: number | null; at: string | null } | null;
+}
+
+export interface MonitoringSeries {
+  /** t까지 1분 동안 (입장 ~ 지금) */
+  perMinute: { t: string; entries: number | null; success: number | null; soldOut: number | null }[];
+  stock: { t: string; remaining: number | null }[];
+  /** 소진 예상 — 시작 5분 뒤부터, 품절 전 */
+  projection: { at: string } | null;
+}
+
+/** GET /monitoring/events/{id}. kpi · series는 ENTRY_OPEN · LIVE · SOLD_OUT에서만 */
+export interface EventMonitoring {
+  eventId: number;
+  name: string;
+  state: MonitoringPhase;
+  /** 준비(WF2-2) 실패 — 입장 전처럼 보이고 안내만 */
+  prepareFailed: boolean;
+  /** 데이터 지연 — 값은 마지막 정상 값 */
+  stale: boolean;
+  lastUpdatedAt: string | null;
+  /** 남은 시간 계산 기준(브라우저 시계를 쓰지 않는다) */
+  serverTime: string;
+  period: { hostingStartAt: string; entryAt: string; startAt: string; endAt: string; hostingEndAt: string; domain: string | null };
+  steps: MonitoringStep[];
+  header: { endsInSec: number | null; soldOutAt: string | null; service: MonitoringService | null };
+  kpi: MonitoringKpi | null;
+  series: MonitoringSeries | null;
+  rejects5m: number | null;
+}

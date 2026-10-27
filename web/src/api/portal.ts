@@ -1,4 +1,4 @@
-import type { DownloadLink, EventDetail, EventResult, EventSummary, EventType, Plan, PortalNotification, PortalSettings, Report, ScreenSetting } from '@/types';
+import type { DownloadLink, EventDetail, EventMonitoring, EventResult, EventSummary, EventType, MonitoringEventList, Plan, PortalNotification, PortalSettings, Report, ScreenSetting } from '@/types';
 import { api } from './client';
 
 /* ---------- 요금제 · 이벤트 (UI-TP-05 ~ 10) ---------- */
@@ -45,6 +45,14 @@ export const getResult = (eventId: number) => api<EventResult>('GET', `/events/$
 
 /** 발급 이력 CSV 링크 — READY가 아니면 409 */
 export const getHistoryCsv = (eventId: number) => api<DownloadLink>('GET', `/events/${eventId}/result/history-csv`);
+
+/* ---------- 모니터링 (UI-TP-11) ---------- */
+
+/** 드롭다운 — 진행 중 → 오늘 예정 → 최근 7일 종료 */
+export const listMonitoringEvents = () => api<MonitoringEventList>('GET', '/monitoring/events');
+
+/** 이벤트 현황(15초 근사값). 승인 전 · 다른 테넌트 이벤트는 404 EVENT_NOT_FOUND */
+export const getEventMonitoring = (eventId: number) => api<EventMonitoring>('GET', `/monitoring/events/${eventId}`);
 
 /* ---------- 알림 · 리포트 · 설정 (UI-TP-12 ~ 14) ---------- */
 

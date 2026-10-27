@@ -6,6 +6,7 @@ import PasswordSetupPage from '@/pages/auth/PasswordSetupPage';
 import EventApplyPage from '@/pages/events/apply/EventApplyPage';
 import EventDetailPage from '@/pages/events/EventDetailPage';
 import EventListPage from '@/pages/events/EventListPage';
+import MonitoringPage from '@/pages/monitoring/MonitoringPage';
 import NotificationCenterPage from '@/pages/notifications/NotificationCenterPage';
 import ReportPage from '@/pages/reports/ReportPage';
 import SettingsPage from '@/pages/settings/SettingsPage';
@@ -17,7 +18,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/password/setup" element={<PasswordSetupPage />} />
 
-      {/* 포털 — 로그인해야 들어온다. 모니터링(UI-TP-11)은 기획 단계라 라우트 없음 */}
+      {/* 포털 — 로그인해야 들어온다 */}
       <Route element={<RequireAuth />}>
       <Route element={<AppLayout />}>
         <Route index element={<Navigate to="/events" replace />} />
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="new" element={<EventApplyPage />} />
           <Route path=":eventId" element={<EventDetailPage />} />
         </Route>
+        <Route path="monitoring" element={<MonitoringPage />} />
         <Route path="reports" element={<ReportPage />} />
         <Route path="notifications" element={<NotificationCenterPage />} />
         <Route path="settings" element={<SettingsPage />} />
