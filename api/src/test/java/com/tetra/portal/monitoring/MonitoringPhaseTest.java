@@ -13,7 +13,8 @@ import com.tetra.portal.domain.HostingStatus;
 class MonitoringPhaseTest {
 
 	static final LocalDateTime START = LocalDateTime.of(2026, 10, 27, 15, 0);
-	static final LocalDateTime ENTRY = START.minusMinutes(60);
+	// TEST-LEAD 원래: static final LocalDateTime ENTRY = START.minusMinutes(60);
+	static final LocalDateTime ENTRY = START.minusMinutes(5); // TEST-LEAD
 	static final LocalDateTime HOSTING_END = START.plusMinutes(100);
 
 	static MonitoringPhase at(LocalDateTime now) {
