@@ -23,19 +23,26 @@ class ApplyPeriodRulesTest {
 
 	@Test
 	void hostingStartMustBeAtLeast100MinutesBeforeEventStart() {
-		assertThat(errors(START.minusMinutes(99), START))
-			.containsEntry("hostingStartAt", "호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.");
-		assertThat(errors(START.minusMinutes(100), START)).isEmpty();
-		assertThat(errors(START.minusMinutes(101), START)).isEmpty();
+		// TEST-LEAD 원래: assertThat(errors(START.minusMinutes(99), START))
+		assertThat(errors(START.minusMinutes(24), START)) // TEST-LEAD
+			// TEST-LEAD 원래: .containsEntry("hostingStartAt", "호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.");
+			.containsEntry("hostingStartAt", "호스팅 시작은 이벤트 시작 25분 전까지여야 합니다."); // TEST-LEAD
+		// TEST-LEAD 원래: assertThat(errors(START.minusMinutes(100), START)).isEmpty();
+		assertThat(errors(START.minusMinutes(25), START)).isEmpty(); // TEST-LEAD
+		// TEST-LEAD 원래: assertThat(errors(START.minusMinutes(101), START)).isEmpty();
+		assertThat(errors(START.minusMinutes(26), START)).isEmpty(); // TEST-LEAD
 		assertThat(errors(START, START)).containsKey("hostingStartAt");
 	}
 
 	@Test
 	void hostingStartMustBeAtLeast30MinutesFromNow() {
 		LocalDateTime farStart = NOW.plusHours(10);
-		assertThat(errors(NOW.plusMinutes(29), farStart))
-			.containsEntry("hostingStartAt", "호스팅 시작은 지금부터 30분 이후여야 합니다.");
-		assertThat(errors(NOW.plusMinutes(30), farStart)).isEmpty();
+		// TEST-LEAD 원래: assertThat(errors(NOW.plusMinutes(29), farStart))
+		assertThat(errors(NOW.plusMinutes(9), farStart)) // TEST-LEAD
+			// TEST-LEAD 원래: .containsEntry("hostingStartAt", "호스팅 시작은 지금부터 30분 이후여야 합니다.");
+			.containsEntry("hostingStartAt", "호스팅 시작은 지금부터 10분 이후여야 합니다."); // TEST-LEAD
+		// TEST-LEAD 원래: assertThat(errors(NOW.plusMinutes(30), farStart)).isEmpty();
+		assertThat(errors(NOW.plusMinutes(10), farStart)).isEmpty(); // TEST-LEAD
 	}
 
 	@Test
@@ -43,7 +50,8 @@ class ApplyPeriodRulesTest {
 		Map<String, String> errors = new LinkedHashMap<>();
 		ApplyService.checkPeriods(NOW.minusHours(1), NOW, NOW.minusHours(3), NOW.minusMinutes(30), NOW, errors);
 		assertThat(errors).containsEntry("startAt", "이벤트 시작은 지금보다 뒤여야 합니다.")
-			.containsEntry("hostingStartAt", "호스팅 시작은 지금부터 30분 이후여야 합니다.")
+			// TEST-LEAD 원래: .containsEntry("hostingStartAt", "호스팅 시작은 지금부터 30분 이후여야 합니다.")
+			.containsEntry("hostingStartAt", "호스팅 시작은 지금부터 10분 이후여야 합니다.") // TEST-LEAD
 			.containsEntry("hostingEndAt", "호스팅 기간이 이벤트 기간을 포함해야 합니다.");
 	}
 

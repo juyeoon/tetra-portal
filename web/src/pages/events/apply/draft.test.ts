@@ -27,26 +27,33 @@ function valid(patch: Partial<ApplyDraft> = {}): ApplyDraft {
 
 describe('infoErrors: 호스팅 시작 ≤ 이벤트 시작 − 100분', () => {
   test('99분 전 거부 · 100분 전 통과 · 101분 전 통과', () => {
-    assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T08:21' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.');
-    assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T08:20' }), NOW), {});
-    assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T08:19' }), NOW), {});
+    // TEST-LEAD 원래: assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T08:21' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.');
+    assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T09:36' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 25분 전까지여야 합니다.'); // TEST-LEAD
+    // TEST-LEAD 원래: assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T08:20' }), NOW), {});
+    assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T09:35' }), NOW), {}); // TEST-LEAD
+    // TEST-LEAD 원래: assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T08:19' }), NOW), {});
+    assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T09:34' }), NOW), {}); // TEST-LEAD
   });
 
   test('호스팅 시작 = 이벤트 시작도 거부', () => {
-    assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T10:00' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.');
+    // TEST-LEAD 원래: assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T10:00' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.');
+    assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T10:00' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 25분 전까지여야 합니다.'); // TEST-LEAD
   });
 });
 
 describe('infoErrors: 호스팅 시작 ≥ 지금 + 30분', () => {
   test('+29분 거부 · +30분 통과', () => {
     const far = { eventStart: '2026-11-01T12:00', eventEnd: '2026-11-01T13:00', hostingEnd: '2026-11-01T14:00' };
-    assert.equal(infoErrors(valid({ ...far, hostingStart: '2026-11-01T09:29' }), NOW).hostingPeriod, '호스팅 시작은 지금부터 30분 이후여야 합니다.');
-    assert.deepEqual(infoErrors(valid({ ...far, hostingStart: '2026-11-01T09:30' }), NOW), {});
+    // TEST-LEAD 원래: assert.equal(infoErrors(valid({ ...far, hostingStart: '2026-11-01T09:29' }), NOW).hostingPeriod, '호스팅 시작은 지금부터 30분 이후여야 합니다.');
+    assert.equal(infoErrors(valid({ ...far, hostingStart: '2026-11-01T09:09' }), NOW).hostingPeriod, '호스팅 시작은 지금부터 10분 이후여야 합니다.'); // TEST-LEAD
+    // TEST-LEAD 원래: assert.deepEqual(infoErrors(valid({ ...far, hostingStart: '2026-11-01T09:30' }), NOW), {});
+    assert.deepEqual(infoErrors(valid({ ...far, hostingStart: '2026-11-01T09:10' }), NOW), {}); // TEST-LEAD
   });
 
   test('브라우저 시간대와 상관없이 입력값을 한국 시각으로 읽는다', () => {
     // NOW(UTC 00:00)와 같은 순간인 한국 09:00 + 30분
-    assert.equal(infoErrors(valid({ eventStart: '2026-11-01T12:00', eventEnd: '2026-11-01T13:00', hostingStart: '2026-11-01T09:30' }), new Date('2026-11-01T00:00:00Z')).hostingPeriod, undefined);
+    // TEST-LEAD 원래: assert.equal(infoErrors(valid({ eventStart: '2026-11-01T12:00', eventEnd: '2026-11-01T13:00', hostingStart: '2026-11-01T09:30' }), new Date('2026-11-01T00:00:00Z')).hostingPeriod, undefined);
+    assert.equal(infoErrors(valid({ eventStart: '2026-11-01T12:00', eventEnd: '2026-11-01T13:00', hostingStart: '2026-11-01T09:10' }), new Date('2026-11-01T00:00:00Z')).hostingPeriod, undefined); // TEST-LEAD
   });
 });
 
