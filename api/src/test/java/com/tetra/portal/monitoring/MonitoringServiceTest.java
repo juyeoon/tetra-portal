@@ -77,7 +77,7 @@ class MonitoringServiceTest {
 	MonitoringService service(String prometheusUrl) {
 		var monitoring = new TetraProperties.Monitoring(prometheusUrl, Duration.ofSeconds(2), Duration.ofSeconds(3),
 				Duration.ofSeconds(15), Duration.ofSeconds(8));
-		var properties = new TetraProperties("test", null, null, null, null, null, null, monitoring, "http://localhost:5174");
+		var properties = new TetraProperties("test", null, null, null, null, null, null, monitoring, null, "http://localhost:5174");
 		return new MonitoringService(router, reader, collector, properties, clock);
 	}
 

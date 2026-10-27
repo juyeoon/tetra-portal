@@ -6,9 +6,10 @@ INSERT INTO operator (operator_id, email, contact_name, password) VALUES
 -- 요금제 · 템플릿은 db/migration/platform/V2(db-schema 시드)가 넣는다 — 금액은 화면 · API에 나오지 않는다(2026-10-19)
 
 -- 테넌트 2개 (스키마는 00-init.sh의 LOCAL_TENANT_IDS). 비밀번호는 아직 없다(= Console WF5 등록 직후) — docker/local/password-link.ps1로 설정
+-- root_domain = 고객사 원래 도메인(등록 때 받는 값). 이벤트 주소는 {slug}.{tenant_id}.EVENT_ROOT_DOMAIN(tetraops.cloud)이라 여기 값과 다르다
 INSERT INTO tenant (tenant_id, name, root_domain, created_at, email, password, contact_name, account_status, provisioning_status) VALUES
-    ('k7f2m9qx4b1t', '테넌트컴퍼니', 'tetraops.cloud', '2026-10-01 10:00:00', 'admin@tenant-company.com', NULL, '다란', 'INACTIVE', 'READY'),
-    ('d4n8p2r6s0v1', '두번째상점', 'tetraops.cloud', '2026-10-02 10:00:00', 'owner@second-shop.com', NULL, '김담당', 'ACTIVE', 'READY');
+    ('k7f2m9qx4b1t', '테넌트컴퍼니', 'tenant-company.com', '2026-10-01 10:00:00', 'admin@tenant-company.com', NULL, '다란', 'INACTIVE', 'READY'),
+    ('d4n8p2r6s0v1', '두번째상점', 'second-shop.com', '2026-10-02 10:00:00', 'owner@second-shop.com', NULL, '김담당', 'ACTIVE', 'READY');
 
 -- ---------------------------------------------------------------- 테넌트컴퍼니(k7f2m9qx4b1t)의 상태별 이벤트 (화면 확인용)
 -- event_id는 event_registry가 발급하는 값 — 같은 번호로 registry와 테넌트 스키마에 같은 상태로 넣는다

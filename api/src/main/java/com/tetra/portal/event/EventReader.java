@@ -39,13 +39,16 @@ class EventReader {
 
 	private final JsonMapper jsonMapper;
 
+	private final EventDomain domains;
+
 	EventReader(EventRepository events, CouponRepository coupons, EventStatusLogRepository statusLogs,
-			EventResultSummaryRepository summaries, JsonMapper jsonMapper) {
+			EventResultSummaryRepository summaries, JsonMapper jsonMapper, EventDomain domains) {
 		this.events = events;
 		this.coupons = coupons;
 		this.statusLogs = statusLogs;
 		this.summaries = summaries;
 		this.jsonMapper = jsonMapper;
+		this.domains = domains;
 	}
 
 	@Transactional(readOnly = true)
@@ -77,7 +80,7 @@ class EventReader {
 				tenant.getContactName(),
 				new EventResponses.Status(e.getApplicationStatus(), e.getHostingStatus(), e.getEventStatus(),
 						e.getRejectReason(), ResultReader.state(e, summaries.findById(eventId).orElse(null))),
-				couponItems, jsonMapper.readTree(e.getLayoutConfig()), EventDomain.of(e, tenant), logs);
+				couponItems, jsonMapper.readTree(e.getLayoutConfig()), domains.of(e), logs);
 	}
 
 	/** 신청 제출(NULL → APPLYING)만 테넌트, changed_by가 있으면 운영자, 나머지는 시스템. */

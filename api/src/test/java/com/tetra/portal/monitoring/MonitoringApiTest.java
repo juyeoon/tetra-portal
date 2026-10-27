@@ -163,7 +163,7 @@ class MonitoringApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.state").value("LIVE"))
 			.andExpect(jsonPath("$.stale").value(false))
 			.andExpect(jsonPath("$.lastUpdatedAt").exists())
-			.andExpect(jsonPath("$.period.domain").value("live0501." + A + "." + A + ".example.com"))
+			.andExpect(jsonPath("$.period.domain").value("live0501." + A + ".tetraops.cloud")) // 플랫폼 도메인 — 테넌트 root_domain 아님
 			.andExpect(jsonPath("$.steps[2].step").value("LIVE"))
 			.andExpect(jsonPath("$.steps[2].status").value("CURRENT"))
 			.andExpect(jsonPath("$.header.service").value("NORMAL"))

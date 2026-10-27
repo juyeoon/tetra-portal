@@ -42,7 +42,7 @@ class PrometheusClientTest {
 	static PrometheusClient client(String url, Duration readTimeout) {
 		var monitoring = new TetraProperties.Monitoring(url, Duration.ofSeconds(2), readTimeout, Duration.ofSeconds(15),
 				Duration.ofSeconds(8));
-		var properties = new TetraProperties("test", null, null, null, null, null, null, monitoring, "http://localhost:5174");
+		var properties = new TetraProperties("test", null, null, null, null, null, null, monitoring, null, "http://localhost:5174");
 		return new PrometheusClient(properties, JsonMapper.builder().build());
 	}
 
