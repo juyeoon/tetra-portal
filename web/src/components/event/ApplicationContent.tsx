@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
 import { Box, Card, Stack, Typography } from '@mui/material';
-import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import InfoList from '@/components/common/InfoList';
 import SectionTitle from '@/components/common/SectionTitle';
-import { color, line, radius, size, text, type } from '@/theme/theme';
+import { color, text, type } from '@/theme/theme';
 import type { ApplicationStatus, EventDetail, Plan } from '@/types';
 import { planLabel } from '@/utils/event';
 import { formatDateTime, formatNumber, formatPeriod } from '@/utils/format';
@@ -68,20 +67,8 @@ export default function ApplicationContent({ event, plans, tenant }: Props) {
     { label: '호스팅 기간', value: formatPeriod(formatDateTime(event.hostingStartAt), formatDateTime(event.hostingEndAt)) },
     {
       label: '이벤트 대표 배너',
-      value: (
-        <Stack direction="row" spacing={1.5} alignItems="center">
-          {/* 배너 이미지 주소는 상세 응답에 없다 — 썸네일 대신 자리 표시 */}
-          <Box sx={{ width: 96, height: 34, flexShrink: 0, display: 'grid', placeItems: 'center', borderRadius: radius.sm, border: `1px dashed ${line.strong}`, color: text.tertiary }}>
-            <ImageOutlinedIcon sx={{ fontSize: size.iconSm }} />
-          </Box>
-          <Box sx={{ minWidth: 0 }}>
-            {bannerText(event.status.applicationStatus)}
-            <Typography variant="body2" sx={{ color: text.tertiary }}>
-              대기열·이벤트 화면 상단에 노출
-            </Typography>
-          </Box>
-        </Stack>
-      ),
+      // 이미지(썸네일 · 자리 표시)는 보여 주지 않고 등록 상태만 — Console 신청 요약과 같게 (2026-10-27)
+      value: <WithNote value={bannerText(event.status.applicationStatus)} note="대기열·이벤트 화면 상단에 노출" />,
     },
     { label: '총 발급 재고', value: `${formatNumber(event.stockCount)}매` },
     { label: '이벤트 화면 설정', value: screenSummary(event.layout) },
