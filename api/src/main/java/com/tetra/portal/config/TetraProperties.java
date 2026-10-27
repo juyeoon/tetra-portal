@@ -26,6 +26,7 @@ public record TetraProperties(
 		@Valid @NotNull @DefaultValue Csv csv,
 		@Valid @NotNull @DefaultValue Mail mail,
 		@Valid @NotNull @DefaultValue Monitoring monitoring,
+		@Valid @NotNull @DefaultValue Event event,
 		@NotBlank @DefaultValue("http://localhost:5174") String publicUrl) {
 
 	public record Aws(@NotBlank String region) {
@@ -78,6 +79,13 @@ public record TetraProperties(
 			return prometheusUrl != null && !prometheusUrl.isBlank();
 		}
 
+	}
+
+	/**
+	 * 이벤트 주소 {slug}.{tenant_id}.{rootDomain} 의 뒷부분 — 플랫폼 도메인(EVENT_ROOT_DOMAIN, 인프라 플랜 D2).
+	 * 테넌트의 root_domain(고객사 원래 도메인, 등록 때 받는 값)은 이벤트 주소에 쓰지 않는다.
+	 */
+	public record Event(@NotBlank @DefaultValue("tetraops.cloud") String rootDomain) {
 	}
 
 	/** 테넌트 콘텐츠 버킷 — WF5가 테넌트마다 만든다(계획서 2-1 ②). Portal은 이름만 만든다. */

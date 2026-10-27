@@ -71,6 +71,9 @@ tetra:
     read-timeout: ${PROMETHEUS_READ_TIMEOUT:PT3S}
     cache-ttl: ${MONITORING_CACHE_TTL:PT15S}
     refresh-timeout: ${MONITORING_REFRESH_TIMEOUT:PT8S}
+  event:
+    # 이벤트 주소 {slug}.{tenant_id}.{root-domain} — 플랫폼 도메인. 테넌트 root_domain(고객사 도메인)과 다르다
+    root-domain: ${EVENT_ROOT_DOMAIN:tetraops.cloud}
   apply:
     # 신청(WF1-1) 뒤 배너 업로드가 이 시간 넘게 끝나지 않으면(태스크 재시작 등) APPLY_FAILED로 정리 (계획서 Q4)
     stale-after: PT10M

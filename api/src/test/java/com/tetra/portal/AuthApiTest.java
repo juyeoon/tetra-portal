@@ -121,7 +121,7 @@ class AuthApiTest extends IntegrationTest {
 		// 다른 키로 서명한 토큰 (예: Console 운영자 토큰)
 		var otherKey = new TetraProperties("test", properties.aws(),
 				new TetraProperties.Auth("another-secret-0123456789abcdef0123456789"), properties.passwordLink(),
-				properties.apply(), properties.csv(), properties.mail(), properties.monitoring(), properties.publicUrl());
+				properties.apply(), properties.csv(), properties.mail(), properties.monitoring(), properties.event(), properties.publicUrl());
 		String foreign = new JwtTokenService(otherKey, Clock.systemUTC()).issue(A);
 		mvc.perform(get("/api/portal/me").cookie(new Cookie(JwtTokenService.COOKIE_NAME, foreign)))
 			.andExpect(status().isUnauthorized());

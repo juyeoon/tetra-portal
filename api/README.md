@@ -31,7 +31,7 @@
 | `GET /api/portal/reports` · `GET …/{id}/download` · `POST …/{id}/email` | 쿠키 | 리포트 목록 · 다운로드 링크(presigned 5분) · 로그인 이메일로 안내 메일(204, SES 실패 503) |
 | `GET /api/portal/settings` · `PATCH …/email {enabled}` | 쿠키 | `{emailEnabled, slackAvailable: false}` |
 | `POST /api/portal/support-mail` `{from, subject, body}` | 공개 | 운영팀 주소(`MAIL_SUPPORT_TO`)로만, Reply-To = from → 204 / 503 |
-| `GET /api/portal/events/{eventId}` | 쿠키 | 상세 — 신청 내용 · 쿠폰 · 화면 구성(`layout` JSON) · 도메인(승인 후, 만료 전) · 진행 기록(`actor`: TENANT · OPERATOR · SYSTEM). 다른 테넌트 이벤트는 404 |
+| `GET /api/portal/events/{eventId}` | 쿠키 | 상세 — 신청 내용 · 쿠폰 · 화면 구성(`layout` JSON) · 도메인 `{slug}.{tenant_id}.{EVENT_ROOT_DOMAIN}`(승인 후, 만료 전 — 기본 `tetraops.cloud`, 테넌트 `root_domain`은 고객사 도메인이라 쓰지 않음) · 진행 기록(`actor`: TENANT · OPERATOR · SYSTEM). 다른 테넌트 이벤트는 404 |
 
 - 비밀번호 설정 링크는 Console이 만든다: `{Portal}/password/setup?t={tenant_id}&exp={epoch초}&sig={서명}`. 화면은 주소의 세 값을 그대로 본문에 담아 보낸다(확인도 POST — 서명이 접근 로그에 한 번 더 남지 않게).
 - 상태를 바꾸는 API는 JSON 본문만 받는다(그 밖은 415). CSRF 토큰 대신 SameSite=Strict 쿠키 + JSON 전용.

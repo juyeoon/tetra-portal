@@ -53,12 +53,15 @@ class MonitoringReader {
 
 	private final EventStatusLogRepository statusLogs;
 
+	private final EventDomain domains;
+
 	MonitoringReader(EventRepository events, EventResultSummaryRepository summaries, TrafficPlanRepository plans,
-			EventStatusLogRepository statusLogs) {
+			EventStatusLogRepository statusLogs, EventDomain domains) {
 		this.events = events;
 		this.summaries = summaries;
 		this.plans = plans;
 		this.statusLogs = statusLogs;
+		this.domains = domains;
 	}
 
 	@Transactional(readOnly = true)
@@ -75,7 +78,7 @@ class MonitoringReader {
 		boolean resultReady = ResultReader.state(e,
 				summaries.findById(eventId).orElse(null)) == ResultResponse.State.READY;
 		List<EventStatusLog> logs = statusLogs.findByEventIdOrderByChangedAtAscLogIdAsc(eventId);
-		return new EventDetail(view(e), capacity, resultReady, EventDomain.of(e, tenant),
+		return new EventDetail(view(e), capacity, resultReady, domains.of(e),
 				firstAt(logs, StatusType.HOSTING, HostingStatus.HOSTING), firstAt(logs, StatusType.EVENT, EventStatus.OPEN));
 	}
 
