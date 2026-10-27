@@ -9,6 +9,7 @@ import {
   durationText,
   estimateNow,
   headlineOf,
+  hostingFailed,
   isTick,
   itemCaption,
   periodText,
@@ -69,7 +70,14 @@ function monitoring(over: Partial<EventMonitoring> = {}): EventMonitoring {
   };
 }
 
-const step = (s: MonitoringStep['step'], status: MonitoringStep['status'], at: string | null): MonitoringStep => ({ step: s, status, at });
+const step = (s: MonitoringStep['step'], status: MonitoringStep['status'], at: string | null, over: Partial<MonitoringStep> = {}): MonitoringStep => ({
+  step: s,
+  status,
+  at,
+  actualAt: null,
+  delayed: false,
+  ...over,
+});
 
 describe('시각 형식', () => {
   test('오늘이면 HH:mm, 아니면 MM-DD HH:mm (한국 날짜 기준)', () => {
@@ -175,11 +183,42 @@ describe('진행 단계 카드', () => {
     assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt), open, ms('2026-10-27T14:42:00+09:00')), '14:00 시작 · 진행 중');
   });
 
-  test('준비 실패로 입장 시각이 지났으면 입장 단계는 준비 중, 지나기 전이면 예정', () => {
+  test('호스팅 시작 · 입장 완료 시각은 실제 시각(없으면 예정 시각)', () => {
+    const open = monitoring({ state: 'ENTRY_OPEN' });
+    const now = ms('2026-10-27T14:42:00+09:00');
+    assert.equal(stepCaption(step('HOSTING_START', 'DONE', open.period.hostingStartAt, { actualAt: '2026-10-27T13:21:30+09:00' }), open, now), '13:21 완료');
+    assert.equal(stepCaption(step('HOSTING_START', 'DONE', open.period.hostingStartAt), open, now), '13:20 완료');
+    assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt, { actualAt: '2026-10-27T14:01:10+09:00' }), open, now), '14:01 시작 · 진행 중');
+    assert.equal(stepCaption(step('ENTRY', 'DONE', open.period.entryAt, { actualAt: '2026-10-27T14:01:10+09:00' }), monitoring(), ms(NOW)), '14:01 완료');
+    // 입장 시각 전에 먼저 열렸으면(실제 시각 있음) 진행 중
+    const before = monitoring({ state: 'BEFORE_ENTRY' });
+    assert.equal(stepCaption(step('ENTRY', 'CURRENT', before.period.entryAt, { actualAt: '2026-10-27T13:55:00+09:00' }), before, ms('2026-10-27T13:58:00+09:00')), '13:55 시작 · 진행 중');
+  });
+
+  test('예정 시각이 지났는데 아직이면 확인 중', () => {
+    const before = monitoring({ state: 'BEFORE_ENTRY' });
+    const now = ms('2026-10-27T13:25:00+09:00');
+    assert.equal(stepCaption(step('HOSTING_START', 'CURRENT', before.period.hostingStartAt, { delayed: true }), before, now), '확인 중');
+    const open = monitoring({ state: 'ENTRY_OPEN' });
+    assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt, { delayed: true }), open, ms('2026-10-27T14:05:00+09:00')), '확인 중');
+  });
+
+  test('실패는 호스팅 시작이면 시작 지연, 입장이면 입장 지연 — 입장 시각 전후 모두', () => {
+    const before = monitoring({ state: 'BEFORE_ENTRY' });
+    assert.equal(stepCaption(step('HOSTING_START', 'FAILED', before.period.hostingStartAt), before, ms('2026-10-27T13:25:00+09:00')), '시작 지연');
     const failed = monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true });
-    const entry = step('ENTRY', 'CURRENT', failed.period.entryAt);
-    assert.equal(stepCaption(entry, failed, ms('2026-10-27T14:20:00+09:00')), '준비 중');
-    assert.equal(stepCaption(entry, failed, ms('2026-10-27T13:50:00+09:00')), '14:00 예정');
+    const entry = step('ENTRY', 'FAILED', failed.period.entryAt);
+    assert.equal(stepCaption(entry, failed, ms('2026-10-27T14:20:00+09:00')), '입장 지연');
+    assert.equal(stepCaption(entry, failed, ms('2026-10-27T13:50:00+09:00')), '입장 지연');
+  });
+
+  test('호스팅 시작 실패 안내는 호스팅 시작 단계가 실패이고 종료 전일 때만', () => {
+    const failedSteps = [step('HOSTING_START', 'FAILED', '2026-10-27T13:20:00+09:00'), step('ENTRY', 'UPCOMING', '2026-10-27T14:00:00+09:00')];
+    assert.equal(hostingFailed(monitoring({ state: 'BEFORE_ENTRY', steps: failedSteps })), true);
+    assert.equal(hostingFailed(monitoring({ state: 'ENDED', steps: failedSteps })), false);
+    // 입장 실패만이면 띄우지 않는다(준비 실패 안내가 따로)
+    const entryFailed = [step('HOSTING_START', 'DONE', '2026-10-27T13:20:00+09:00'), step('ENTRY', 'FAILED', '2026-10-27T14:00:00+09:00')];
+    assert.equal(hostingFailed(monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true, steps: entryFailed })), false);
   });
 
   test('품절이면 진행 단계에 품절 시각', () => {

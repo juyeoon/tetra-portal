@@ -11,12 +11,15 @@ import com.tetra.portal.common.error.ErrorCode;
 import com.tetra.portal.domain.ApplicationStatus;
 import com.tetra.portal.domain.EventStatus;
 import com.tetra.portal.domain.HostingStatus;
+import com.tetra.portal.domain.StatusType;
 import com.tetra.portal.domain.platform.Tenant;
 import com.tetra.portal.domain.platform.TrafficPlan;
 import com.tetra.portal.domain.platform.TrafficPlanRepository;
 import com.tetra.portal.domain.tenant.Event;
 import com.tetra.portal.domain.tenant.EventRepository;
 import com.tetra.portal.domain.tenant.EventResultSummaryRepository;
+import com.tetra.portal.domain.tenant.EventStatusLog;
+import com.tetra.portal.domain.tenant.EventStatusLogRepository;
 import com.tetra.portal.event.EventDomain;
 import com.tetra.portal.result.ResultReader;
 import com.tetra.portal.result.ResultResponse;
@@ -34,8 +37,12 @@ class MonitoringReader {
 			String planCode) {
 	}
 
-	/** 상세에만 필요한 값. planCapacity = traffic_plan.max_capacity(결과 탭과 같은 출처) */
-	record EventDetail(EventView event, Long planCapacity, boolean resultReady, String domain) {
+	/**
+	 * 상세에만 필요한 값. planCapacity = traffic_plan.max_capacity(결과 탭과 같은 출처).
+	 * hostingStartedAt · openedAt = 실제 전이 시각(event_status_log의 첫 HOSTING → HOSTING · EVENT → OPEN, 없으면 null)
+	 */
+	record EventDetail(EventView event, Long planCapacity, boolean resultReady, String domain,
+			LocalDateTime hostingStartedAt, LocalDateTime openedAt) {
 	}
 
 	private final EventRepository events;
@@ -44,10 +51,14 @@ class MonitoringReader {
 
 	private final TrafficPlanRepository plans;
 
-	MonitoringReader(EventRepository events, EventResultSummaryRepository summaries, TrafficPlanRepository plans) {
+	private final EventStatusLogRepository statusLogs;
+
+	MonitoringReader(EventRepository events, EventResultSummaryRepository summaries, TrafficPlanRepository plans,
+			EventStatusLogRepository statusLogs) {
 		this.events = events;
 		this.summaries = summaries;
 		this.plans = plans;
+		this.statusLogs = statusLogs;
 	}
 
 	@Transactional(readOnly = true)
@@ -63,7 +74,18 @@ class MonitoringReader {
 		Long capacity = plans.findById(e.getTrafficPlanCode()).map(TrafficPlan::getMaxCapacity).orElse(null);
 		boolean resultReady = ResultReader.state(e,
 				summaries.findById(eventId).orElse(null)) == ResultResponse.State.READY;
-		return new EventDetail(view(e), capacity, resultReady, EventDomain.of(e, tenant));
+		List<EventStatusLog> logs = statusLogs.findByEventIdOrderByChangedAtAscLogIdAsc(eventId);
+		return new EventDetail(view(e), capacity, resultReady, EventDomain.of(e, tenant),
+				firstAt(logs, StatusType.HOSTING, HostingStatus.HOSTING), firstAt(logs, StatusType.EVENT, EventStatus.OPEN));
+	}
+
+	/** 로그는 시각 순서 — 처음 그 상태가 된 시각 */
+	private static LocalDateTime firstAt(List<EventStatusLog> logs, StatusType type, Enum<?> status) {
+		return logs.stream()
+			.filter(l -> l.getStatusType() == type && status.name().equals(l.getNewStatus()))
+			.findFirst()
+			.map(EventStatusLog::getChangedAt)
+			.orElse(null);
 	}
 
 	private static EventView view(Event e) {

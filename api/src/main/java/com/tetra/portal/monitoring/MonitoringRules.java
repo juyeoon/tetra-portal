@@ -5,9 +5,15 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 import com.tetra.portal.common.time.Kst;
+import com.tetra.portal.domain.EventStatus;
+import com.tetra.portal.domain.HostingStatus;
+import com.tetra.portal.monitoring.MonitoringReader.EventDetail;
+import com.tetra.portal.monitoring.MonitoringReader.EventView;
 import com.tetra.portal.monitoring.MonitoringResponses.Service;
 import com.tetra.portal.monitoring.MonitoringResponses.Step;
 import com.tetra.portal.monitoring.MonitoringResponses.StepKey;
@@ -120,26 +126,43 @@ final class MonitoringRules {
 		return remainingNow != null && remainingNow == 0 ? at.truncatedTo(ChronoUnit.MINUTES) : null;
 	}
 
+	/** 호스팅이 시작된 뒤의 상태 — 전이 로그가 빠져도 상태로 완료를 안다 */
+	private static final Set<HostingStatus> HOSTING_STARTED = EnumSet.of(HostingStatus.HOSTING, HostingStatus.ENDED,
+			HostingStatus.END_FAILED);
+
 	/**
-	 * 진행 단계 5개(2026-10-27 캡처 검토). 단계마다 끝났는지(DONE)만 정하고, 완료되지 않은 첫 단계가 CURRENT, 그 뒤는 UPCOMING.
-	 * - 호스팅 시작은 시점 단계: hosting_start_at이 지났으면(또는 입장 뒤) 완료. 그전에는 호스팅 시작이 현재("HH:mm 예정", web)
-	 * - 입장: 이벤트 시작(진행 중 · 품절 · 종료)부터 완료 — 입장 전(준비 실패 포함) · 입장 ~ 시작에는 입장이 현재
+	 * 진행 단계 5개(2026-10-27 결정). 호스팅 시작 · 입장은 실제 상태(hosting_status · event_status + 첫 전이 로그)로,
+	 * 이벤트 진행 · 종료 · 집계는 상태(시각 기준)로 정한다. 실패(FAILED)는 어디서든 실패로 보이고,
+	 * 그 밖에 완료되지 않은 첫 단계가 CURRENT, 그 뒤는 UPCOMING. 예정 시각이 지났는데 아직이면 delayed(web "확인 중").
+	 * - 호스팅 시작: HOSTING 로그 또는 HOSTING · ENDED · END_FAILED면 완료(실제 시각 = 로그). HOSTING_FAILED면 실패
+	 * - 입장: OPEN이 된 적 있고(로그 · OPEN · EXPIRED) 이벤트가 시작했으면 완료. OPEN이면 입장 중(실제 시각 = 로그), OPEN_FAILED면 실패
 	 * - 이벤트 진행 · 종료: 종료면 완료. 결과 집계: 종료 뒤 결과가 준비되면 완료(아니면 현재 = 집계 중)
 	 */
-	static List<Step> steps(MonitoringPhase phase, LocalDateTime now, LocalDateTime hostingStartAt,
-			LocalDateTime entryAt, LocalDateTime startAt, LocalDateTime hostingEndAt, boolean resultReady) {
+	static List<Step> steps(MonitoringPhase phase, LocalDateTime now, EventDetail detail) {
+		EventView e = detail.event();
+		LocalDateTime entryAt = MonitoringPhase.entryAt(e.startAt());
 		boolean ended = phase == MonitoringPhase.ENDED;
 		boolean started = ended || phase == MonitoringPhase.LIVE || phase == MonitoringPhase.SOLD_OUT;
-		boolean[] done = { phase != MonitoringPhase.BEFORE_ENTRY || !now.isBefore(hostingStartAt), started, ended, ended,
-				ended && resultReady };
-		LocalDateTime[] at = { hostingStartAt, entryAt, startAt, hostingEndAt, null };
+		boolean hosted = detail.hostingStartedAt() != null || HOSTING_STARTED.contains(e.hostingStatus());
+		boolean hostingFailed = !hosted && e.hostingStatus() == HostingStatus.HOSTING_FAILED;
+		boolean opened = detail.openedAt() != null || e.eventStatus() == EventStatus.OPEN
+				|| e.eventStatus() == EventStatus.EXPIRED;
+		boolean openFailed = e.eventStatus() == EventStatus.OPEN_FAILED;
+
+		boolean[] done = { hosted, opened && started, ended, ended, ended && detail.resultReady() };
+		boolean[] failed = { hostingFailed, openFailed, false, false, false };
+		boolean[] delayed = { !hosted && !hostingFailed && !now.isBefore(e.hostingStartAt()),
+				!opened && !openFailed && !now.isBefore(entryAt), false, false, false };
+		LocalDateTime[] at = { e.hostingStartAt(), entryAt, e.startAt(), e.hostingEndAt(), null };
+		LocalDateTime[] actualAt = { detail.hostingStartedAt(), detail.openedAt(), null, null, null };
 		StepKey[] keys = StepKey.values();
 		List<Step> steps = new ArrayList<>(keys.length);
 		boolean currentTaken = false;
 		for (int i = 0; i < keys.length; i++) {
-			StepStatus status = done[i] ? StepStatus.DONE : currentTaken ? StepStatus.UPCOMING : StepStatus.CURRENT;
+			StepStatus status = done[i] ? StepStatus.DONE
+					: failed[i] ? StepStatus.FAILED : currentTaken ? StepStatus.UPCOMING : StepStatus.CURRENT;
 			currentTaken |= !done[i];
-			steps.add(new Step(keys[i], Kst.toOffset(at[i]), status));
+			steps.add(new Step(keys[i], Kst.toOffset(at[i]), Kst.toOffset(actualAt[i]), status, delayed[i]));
 		}
 		return steps;
 	}

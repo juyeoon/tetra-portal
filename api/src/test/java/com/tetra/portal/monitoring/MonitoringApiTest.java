@@ -1,6 +1,7 @@
 package com.tetra.portal.monitoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -233,6 +234,35 @@ class MonitoringApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.kpi").doesNotExist())
 			.andExpect(jsonPath("$.header.service").doesNotExist());
 		assertThat(prometheus.requests()).isEmpty();
+	}
+
+	@Test
+	void 호스팅_시작_칸은_시각이_아니라_실제_상태와_첫_전이_로그로() throws Exception {
+		// 셋 다 호스팅 시작(시작 − 2시간 = 30분 전)이 지났고 입장 전
+		data.event(603, A).approved("HOSTING", "SCHEDULED", "host0603").startAt(NOW.plusMinutes(90)).insert();
+		data.statusLog(A, 603, "HOSTING", "DEPLOYED", "HOSTING", NOW.minusMinutes(29), null, null);
+		data.event(604, A).approved("DEPLOYED", "SCHEDULED", "wait0604").startAt(NOW.plusMinutes(90)).insert();
+		data.event(605, A).approved("HOSTING_FAILED", "SCHEDULED", "fail0605").startAt(NOW.plusMinutes(90)).insert();
+		data.statusLog(A, 605, "HOSTING", "DEPLOYED", "HOSTING_FAILED", NOW.minusMinutes(27), "페이지 확인 시간 초과", null);
+
+		mvc.perform(get("/api/portal/monitoring/events/{id}", 603).cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.steps[0].status").value("DONE"))
+			.andExpect(jsonPath("$.steps[0].actualAt").value(startsWith(NOW.minusMinutes(29).toString().substring(0, 16))))
+			.andExpect(jsonPath("$.steps[0].delayed").value(false))
+			.andExpect(jsonPath("$.steps[1].status").value("CURRENT"))
+			.andExpect(jsonPath("$.steps[1].actualAt").doesNotExist());
+		mvc.perform(get("/api/portal/monitoring/events/{id}", 604).cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.steps[0].status").value("CURRENT"))
+			.andExpect(jsonPath("$.steps[0].delayed").value(true))
+			.andExpect(jsonPath("$.steps[1].status").value("UPCOMING"));
+		mvc.perform(get("/api/portal/monitoring/events/{id}", 605).cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.state").value("BEFORE_ENTRY")) // 상태는 시각 기준 그대로
+			.andExpect(jsonPath("$.steps[0].status").value("FAILED"))
+			.andExpect(jsonPath("$.steps[0].delayed").value(false))
+			.andExpect(jsonPath("$.steps[1].status").value("UPCOMING"));
 	}
 
 	// ---- 데이터 지연 ----

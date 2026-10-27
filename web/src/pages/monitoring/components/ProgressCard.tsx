@@ -2,7 +2,7 @@ import { Box, Stack, Typography } from '@mui/material';
 import StatusChip from '@/components/common/StatusChip';
 import { color, font, line, radius, text, tones } from '@/theme/theme';
 import type { EventMonitoring, MonitoringStepStatus } from '@/types';
-import { STEP_TITLE, TEXT, headlineOf, refreshStatus, serviceChip, soldOutNote, stepCaption } from '../monitoringView';
+import { STEP_TITLE, TEXT, headlineOf, hostingFailed, refreshStatus, serviceChip, soldOutNote, stepCaption } from '../monitoringView';
 
 interface ProgressCardProps {
   m: EventMonitoring;
@@ -19,6 +19,8 @@ const segment = (reached: boolean) =>
 function Dot({ status }: { status: MonitoringStepStatus }) {
   const base = { width: 12, height: 12, borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box' as const };
   if (status === 'DONE') return <Box sx={{ ...base, bgcolor: color.navy }} />;
+  // 실패(호스팅 시작 · 입장)는 주황 — 빨강은 쓰지 않는다
+  if (status === 'FAILED') return <Box sx={{ ...base, bgcolor: tones.amber.dot }} />;
   if (status === 'CURRENT') return <Box sx={{ ...base, width: 14, height: 14, bgcolor: color.white, border: `2.5px solid ${color.navy}` }} />;
   return <Box sx={{ ...base, bgcolor: color.white, border: `2px solid ${line.strong}` }} />;
 }
@@ -74,7 +76,12 @@ export default function ProgressCard({ m, nowMs, delayed }: ProgressCardProps) {
           ))}
       </Stack>
 
-      {/* 준비 실패 · 지연 중 안내 — 빨강은 쓰지 않는다 */}
+      {/* 호스팅 시작 실패 · 준비 실패 · 지연 중 안내 — 빨강은 쓰지 않는다 */}
+      {hostingFailed(m) && (
+        <Typography variant="body2" sx={{ mt: 1.5, color: tones.amber.fg, fontWeight: font.weight.semibold }}>
+          {TEXT.hostingFailed}
+        </Typography>
+      )}
       {m.prepareFailed && m.state !== 'ENDED' && (
         <Typography variant="body2" sx={{ mt: 1.5, color: tones.amber.fg, fontWeight: font.weight.semibold }}>
           {TEXT.prepareFailed}
@@ -88,7 +95,7 @@ export default function ProgressCard({ m, nowMs, delayed }: ProgressCardProps) {
 
       <Box component="ol" aria-label="진행 단계" sx={{ listStyle: 'none', p: 0, m: 0, mt: 3, display: 'grid', gridTemplateColumns: `repeat(${steps.length}, 1fr)` }}>
         {steps.map((s, i) => {
-          // 앞 단계가 끝났고 이 단계에 들어섰으면 실선 — 호스팅 시작 전(UPCOMING)에서 입장(CURRENT)까지는 점선
+          // 앞 단계가 끝났고 이 단계에 들어섰으면(현재 · 실패) 실선. 끝나지 않은 단계(현재 · 실패)의 오른쪽은 점선
           const reachedLeft = i > 0 && steps[i - 1].status === 'DONE' && s.status !== 'UPCOMING';
           const reachedRight = i + 1 < steps.length && s.status === 'DONE' && steps[i + 1].status !== 'UPCOMING';
           return (
@@ -100,11 +107,19 @@ export default function ProgressCard({ m, nowMs, delayed }: ProgressCardProps) {
               </Stack>
               <Typography
                 variant="body2"
-                sx={{ mt: 1, color: s.status === 'UPCOMING' ? text.tertiary : text.primary, fontWeight: s.status === 'CURRENT' ? font.weight.bold : font.weight.regular }}
+                sx={{
+                  mt: 1,
+                  color: s.status === 'UPCOMING' ? text.tertiary : text.primary,
+                  fontWeight: s.status === 'CURRENT' || s.status === 'FAILED' ? font.weight.bold : font.weight.regular,
+                }}
               >
                 {STEP_TITLE[s.step]}
               </Typography>
-              <Typography variant="caption" component="p" sx={{ mt: 0.25, color: s.status === 'CURRENT' ? text.secondary : text.tertiary }}>
+              <Typography
+                variant="caption"
+                component="p"
+                sx={{ mt: 0.25, color: s.status === 'FAILED' ? tones.amber.fg : s.status === 'CURRENT' ? text.secondary : text.tertiary }}
+              >
                 {stepCaption(s, m, nowMs)}
               </Typography>
             </Box>

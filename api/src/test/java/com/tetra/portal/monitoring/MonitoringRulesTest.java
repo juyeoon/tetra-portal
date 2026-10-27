@@ -9,6 +9,10 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.tetra.portal.domain.EventStatus;
+import com.tetra.portal.domain.HostingStatus;
+import com.tetra.portal.monitoring.MonitoringReader.EventDetail;
+import com.tetra.portal.monitoring.MonitoringReader.EventView;
 import com.tetra.portal.monitoring.MonitoringResponses.Service;
 import com.tetra.portal.monitoring.MonitoringResponses.Step;
 import com.tetra.portal.monitoring.MonitoringResponses.StepKey;
@@ -182,9 +186,25 @@ class MonitoringRulesTest {
 
 	static final LocalDateTime START = LocalDateTime.of(2026, 10, 27, 15, 0);
 
-	static List<StepStatus> steps(MonitoringPhase phase, LocalDateTime now, boolean resultReady) {
-		return MonitoringRules.steps(phase, now, START.minusMinutes(100), START.minusMinutes(60), START,
-				START.plusMinutes(40), resultReady).stream().map(Step::status).toList();
+	static final LocalDateTime HOSTING_START = START.minusMinutes(100);
+
+	static final LocalDateTime ENTRY = MonitoringPhase.entryAt(START);
+
+	static final LocalDateTime HOSTING_END = START.plusMinutes(40);
+
+	/** 상태 · 첫 전이 로그 시각(HOSTING · OPEN, 없으면 null) */
+	static EventDetail detail(HostingStatus hosting, EventStatus event, LocalDateTime hostingStartedAt,
+			LocalDateTime openedAt, boolean resultReady) {
+		var view = new EventView(1L, "이벤트", HOSTING_START, START, HOSTING_END, HOSTING_END, event, hosting, 15000L, "M");
+		return new EventDetail(view, 30000L, resultReady, null, hostingStartedAt, openedAt);
+	}
+
+	static List<Step> stepsOf(MonitoringPhase phase, LocalDateTime now, EventDetail detail) {
+		return MonitoringRules.steps(phase, now, detail);
+	}
+
+	static List<StepStatus> statuses(MonitoringPhase phase, LocalDateTime now, EventDetail detail) {
+		return stepsOf(phase, now, detail).stream().map(Step::status).toList();
 	}
 
 	static final StepStatus D = StepStatus.DONE;
@@ -193,40 +213,123 @@ class MonitoringRulesTest {
 
 	static final StepStatus U = StepStatus.UPCOMING;
 
+	static final StepStatus F = StepStatus.FAILED;
+
+	static final EventDetail DEPLOYED = detail(HostingStatus.DEPLOYED, EventStatus.SCHEDULED, null, null, false);
+
+	static final EventDetail HOSTED = detail(HostingStatus.HOSTING, EventStatus.SCHEDULED, HOSTING_START.plusMinutes(1),
+			null, false);
+
+	static final EventDetail OPENED = detail(HostingStatus.HOSTING, EventStatus.OPEN, HOSTING_START.plusMinutes(1),
+			ENTRY.plusSeconds(10), false);
+
 	@Test
-	void 완료되지_않은_첫_단계가_현재_호스팅_시작은_지나면_완료() {
-		// 호스팅 시작 = START − 100분. 그전에는 호스팅 시작이 현재
-		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(101), false)).containsExactly(C, U, U, U, U);
-		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(100), false)).containsExactly(D, C, U, U, U);
+	void 호스팅_시작_전에는_호스팅_시작이_현재() {
+		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, HOSTING_START.minusMinutes(1), DEPLOYED);
+		assertThat(steps).extracting(Step::status).containsExactly(C, U, U, U, U);
+		assertThat(steps.get(0).delayed()).isFalse();
+		assertThat(steps.get(0).actualAt()).isNull();
+	}
+
+	@Test
+	void 호스팅_시작_시각이_지났는데_DEPLOYED면_현재_그대로_지연() {
+		// 시각만으로 완료하지 않는다 — WF2-1이 확인 중이거나 돌지 않았다
+		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, HOSTING_START, DEPLOYED);
+		assertThat(steps).extracting(Step::status).containsExactly(C, U, U, U, U);
+		assertThat(steps.get(0).delayed()).isTrue();
+		assertThat(stepsOf(MonitoringPhase.ENTRY_OPEN, ENTRY, DEPLOYED)).extracting(Step::status)
+			.containsExactly(C, U, U, U, U);
+	}
+
+	@Test
+	void HOSTING이면_완료_시각은_첫_전이_로그() {
+		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, HOSTING_START.plusMinutes(2), HOSTED);
+		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
+		assertThat(steps.get(0).actualAt().toLocalDateTime()).isEqualTo(HOSTING_START.plusMinutes(1));
+		assertThat(steps.get(0).delayed()).isFalse();
+	}
+
+	@Test
+	void 로그가_없어도_HOSTING_뒤_상태면_완료() {
+		for (HostingStatus status : List.of(HostingStatus.HOSTING, HostingStatus.ENDED, HostingStatus.END_FAILED)) {
+			var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(90),
+					detail(status, EventStatus.SCHEDULED, null, null, false));
+			assertThat(steps.get(0).status()).as(status.name()).isEqualTo(D);
+			assertThat(steps.get(0).actualAt()).isNull(); // 화면은 예정 시각으로
+		}
+	}
+
+	@Test
+	void HOSTING_FAILED면_호스팅_시작은_실패() {
+		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(90),
+				detail(HostingStatus.HOSTING_FAILED, EventStatus.SCHEDULED, null, null, false));
+		assertThat(steps).extracting(Step::status).containsExactly(F, U, U, U, U);
+		assertThat(steps.get(0).delayed()).isFalse();
 	}
 
 	@Test
 	void 입장_전에는_입장이_현재() {
-		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(90), false)).containsExactly(D, C, U, U, U);
-		assertThat(steps(MonitoringPhase.ENTRY_OPEN, START.minusMinutes(30), false)).containsExactly(D, C, U, U, U);
+		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), HOSTED);
+		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
+		assertThat(steps.get(1).delayed()).isFalse();
 	}
 
 	@Test
-	void 준비_실패도_입장_전과_같다_입장_시각이_지나도() {
-		// 준비 실패는 종료 전까지 BEFORE_ENTRY — 입장(START − 60분)이 지나도 입장이 현재
-		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(40), false)).containsExactly(D, C, U, U, U);
+	void 입장_시각이_지났는데_OPEN이_아니면_입장이_현재_그대로_지연() {
+		var steps = stepsOf(MonitoringPhase.ENTRY_OPEN, ENTRY, HOSTED);
+		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
+		assertThat(steps.get(1).delayed()).isTrue();
+		// 시작 시각이 지나도 OPEN이 안 됐으면 이벤트 진행은 현재가 되지 않는다
+		var late = stepsOf(MonitoringPhase.LIVE, START.plusMinutes(1), HOSTED);
+		assertThat(late).extracting(Step::status).containsExactly(D, C, U, U, U);
+		assertThat(late.get(1).delayed()).isTrue();
+	}
+
+	@Test
+	void OPEN이면_입장_중_시각은_첫_전이_로그() {
+		var steps = stepsOf(MonitoringPhase.ENTRY_OPEN, ENTRY.plusSeconds(30), OPENED);
+		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
+		assertThat(steps.get(1).delayed()).isFalse();
+		assertThat(steps.get(1).actualAt().toLocalDateTime()).isEqualTo(ENTRY.plusSeconds(10));
+	}
+
+	@Test
+	void OPEN_FAILED면_입장은_실패_입장_시각_전후_모두() {
+		var failed = detail(HostingStatus.HOSTING, EventStatus.OPEN_FAILED, HOSTING_START, null, false);
+		// 준비 실패는 종료 전까지 BEFORE_ENTRY
+		for (LocalDateTime now : List.of(ENTRY.minusMinutes(1), ENTRY, START.plusMinutes(1))) {
+			var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, now, failed);
+			assertThat(steps).extracting(Step::status).as(now.toString()).containsExactly(D, F, U, U, U);
+			assertThat(steps.get(1).delayed()).isFalse();
+		}
+	}
+
+	@Test
+	void 실패는_앞_단계가_끝나지_않았어도_실패() {
+		var both = detail(HostingStatus.HOSTING_FAILED, EventStatus.OPEN_FAILED, null, null, false);
+		assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, ENTRY, both)).containsExactly(F, F, U, U, U);
 	}
 
 	@Test
 	void 진행_중_품절_종료() {
-		assertThat(steps(MonitoringPhase.LIVE, START.plusMinutes(10), false)).containsExactly(D, D, C, U, U);
-		assertThat(steps(MonitoringPhase.SOLD_OUT, START.plusMinutes(10), false)).containsExactly(D, D, C, U, U);
-		assertThat(steps(MonitoringPhase.ENDED, START.plusMinutes(50), false)).containsExactly(D, D, D, D, C); // 집계 중
-		assertThat(steps(MonitoringPhase.ENDED, START.plusMinutes(50), true)).containsExactly(D, D, D, D, D); // 완료
+		assertThat(statuses(MonitoringPhase.LIVE, START.plusMinutes(10), OPENED)).containsExactly(D, D, C, U, U);
+		assertThat(statuses(MonitoringPhase.SOLD_OUT, START.plusMinutes(10), OPENED)).containsExactly(D, D, C, U, U);
+		var ended = detail(HostingStatus.ENDED, EventStatus.EXPIRED, null, null, false);
+		assertThat(statuses(MonitoringPhase.ENDED, START.plusMinutes(50), ended)).containsExactly(D, D, D, D, C); // 집계 중
+		var ready = detail(HostingStatus.ENDED, EventStatus.EXPIRED, null, null, true);
+		assertThat(statuses(MonitoringPhase.ENDED, START.plusMinutes(50), ready)).containsExactly(D, D, D, D, D); // 완료
 	}
 
 	@Test
 	void 단계_시각은_호스팅_시작_입장_시작_종료_그리고_집계는_없음() {
-		var steps = MonitoringRules.steps(MonitoringPhase.LIVE, START, START.minusMinutes(100), START.minusMinutes(60), START,
-				START.plusMinutes(40), false);
+		var steps = stepsOf(MonitoringPhase.LIVE, START, OPENED);
 		assertThat(steps).extracting(Step::step).containsExactly(StepKey.values());
 		assertThat(steps).extracting(s -> s.at() == null ? null : s.at().toLocalDateTime())
-			.containsExactly(START.minusMinutes(100), START.minusMinutes(60), START, START.plusMinutes(40), null);
+			.containsExactly(HOSTING_START, ENTRY, START, HOSTING_END, null);
+		// 실제 시각 · 지연은 호스팅 시작 · 입장만
+		assertThat(steps).extracting(s -> s.actualAt() == null ? null : s.actualAt().toLocalDateTime())
+			.containsExactly(HOSTING_START.plusMinutes(1), ENTRY.plusSeconds(10), null, null, null);
+		assertThat(steps.subList(2, 5)).extracting(Step::delayed).containsOnly(false);
 	}
 
 }

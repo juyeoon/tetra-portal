@@ -59,7 +59,7 @@ class MonitoringServiceTest {
 		when(router.findTenant(TENANT)).thenReturn(tenant);
 		when(router.inTenant(any(Tenant.class), any(Supplier.class)))
 			.thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
-		when(reader.event(eq(1L), any())).thenReturn(detail(EventStatus.SCHEDULED, HostingStatus.HOSTING));
+		when(reader.event(eq(1L), any())).thenReturn(detail(EventStatus.OPEN, HostingStatus.HOSTING));
 		when(collector.collect(anyString(), anyLong(), any(), anyLong())).thenAnswer(inv -> metrics.build());
 	}
 
@@ -71,7 +71,7 @@ class MonitoringServiceTest {
 
 	static EventDetail detail(EventStatus eventStatus, HostingStatus hostingStatus) {
 		return new EventDetail(view(1, START, HOSTING_END, eventStatus, hostingStatus), 30000L, false,
-				"aut26.aaaaaaaaaaaa.example.com");
+				"aut26.aaaaaaaaaaaa.example.com", null, null);
 	}
 
 	MonitoringService service(String prometheusUrl) {

@@ -129,8 +129,7 @@ public class MonitoringService {
 				m == null ? null : offset(m.at()), Kst.toOffset(now),
 				new Period(Kst.toOffset(e.hostingStartAt()), Kst.toOffset(entryAt), Kst.toOffset(e.startAt()),
 						Kst.toOffset(e.endAt()), Kst.toOffset(e.hostingEndAt()), detail.domain()),
-				MonitoringRules.steps(phase, now, e.hostingStartAt(), entryAt, e.startAt(), e.hostingEndAt(),
-						detail.resultReady()),
+				MonitoringRules.steps(phase, now, detail),
 				header, queried ? kpi(detail, phase, m, remaining) : null, queried ? series(e, phase, m, remaining) : null,
 				queried && m != null ? MonitoringRules.count(m.rejects5m()) : null);
 	}
