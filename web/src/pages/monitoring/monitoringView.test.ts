@@ -8,8 +8,8 @@ import {
   countText,
   durationText,
   estimateNow,
+  detailCaption,
   headlineOf,
-  hostingFailed,
   isTick,
   itemCaption,
   periodText,
@@ -17,6 +17,7 @@ import {
   pickEventId,
   refreshStatus,
   rejectChip,
+  selectOptions,
   serviceChip,
   share,
   shareText,
@@ -203,22 +204,30 @@ describe('진행 단계 카드', () => {
     assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt, { delayed: true }), open, ms('2026-10-27T14:05:00+09:00')), '확인 중');
   });
 
-  test('실패는 호스팅 시작이면 시작 지연, 입장이면 입장 지연 — 입장 시각 전후 모두', () => {
-    const before = monitoring({ state: 'BEFORE_ENTRY' });
-    assert.equal(stepCaption(step('HOSTING_START', 'FAILED', before.period.hostingStartAt), before, ms('2026-10-27T13:25:00+09:00')), '시작 지연');
+  test('입장 실패는 입장 지연 — 입장 시각 전후 · 종료 뒤 모두', () => {
     const failed = monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true });
     const entry = step('ENTRY', 'FAILED', failed.period.entryAt);
     assert.equal(stepCaption(entry, failed, ms('2026-10-27T14:20:00+09:00')), '입장 지연');
     assert.equal(stepCaption(entry, failed, ms('2026-10-27T13:50:00+09:00')), '입장 지연');
+    assert.equal(stepCaption(entry, monitoring({ state: 'ENDED' }), ms('2026-10-27T16:00:00+09:00')), '입장 지연');
   });
 
-  test('호스팅 시작 실패 안내는 호스팅 시작 단계가 실패이고 종료 전일 때만', () => {
-    const failedSteps = [step('HOSTING_START', 'FAILED', '2026-10-27T13:20:00+09:00'), step('ENTRY', 'UPCOMING', '2026-10-27T14:00:00+09:00')];
-    assert.equal(hostingFailed(monitoring({ state: 'BEFORE_ENTRY', steps: failedSteps })), true);
-    assert.equal(hostingFailed(monitoring({ state: 'ENDED', steps: failedSteps })), false);
-    // 입장 실패만이면 띄우지 않는다(준비 실패 안내가 따로)
-    const entryFailed = [step('HOSTING_START', 'DONE', '2026-10-27T13:20:00+09:00'), step('ENTRY', 'FAILED', '2026-10-27T14:00:00+09:00')];
-    assert.equal(hostingFailed(monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true, steps: entryFailed })), false);
+  test('정상 이벤트도 종료 시각 뒤 WF4가 끝날 때까지 종료는 종료 처리 중, 끝나면 완료', () => {
+    const ended = monitoring({ state: 'ENDED' });
+    const now = ms('2026-10-27T15:42:00+09:00');
+    assert.equal(stepCaption(step('END', 'CURRENT', ended.period.hostingEndAt, { delayed: true }), ended, now), '종료 처리 중');
+    assert.equal(stepCaption(step('END', 'DONE', ended.period.hostingEndAt), ended, now), '15:40 완료');
+    // 종료 전 종료 칸은 예정(현재가 되어도 '진행 중'이 아니다)
+    assert.equal(stepCaption(step('END', 'UPCOMING', ended.period.hostingEndAt), monitoring(), ms(NOW)), '15:40 예정');
+    assert.equal(stepCaption(step('END', 'CURRENT', ended.period.hostingEndAt), ended, now), '15:40 예정');
+  });
+
+  test('열리지 않은 채 끝난 이벤트의 진행 · 종료 · 결과 집계는 진행 안 됨(집계 중으로 남지 않는다)', () => {
+    const ended = monitoring({ state: 'ENDED' });
+    const now = ms('2026-10-27T16:00:00+09:00');
+    assert.equal(stepCaption(step('LIVE', 'SKIPPED', ended.period.startAt), ended, now), '진행 안 됨');
+    assert.equal(stepCaption(step('END', 'SKIPPED', ended.period.hostingEndAt), ended, now), '진행 안 됨');
+    assert.equal(stepCaption(step('AGGREGATE', 'SKIPPED', null), ended, now), '진행 안 됨');
   });
 
   test('품절이면 진행 단계에 품절 시각', () => {
@@ -245,6 +254,7 @@ describe('진행 단계 카드', () => {
     assert.equal(showsMetrics(monitoring({ state: 'BEFORE_ENTRY' })), false);
     assert.equal(showsMetrics(monitoring({ state: 'ENDED' })), false);
     assert.equal(showsMetrics(monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true })), false);
+    assert.equal(showsMetrics(monitoring({ state: 'UNAVAILABLE' })), false);
   });
 });
 
@@ -305,12 +315,38 @@ describe('드롭다운', () => {
 
   const list: MonitoringEventList = { events: [item({ eventId: 7 }), item({ eventId: 9, group: 'ENDED' })], defaultEventId: 7 };
 
-  test('?eventId=가 목록에 있으면 그것, 아니면 기본 선택', () => {
+  test('?eventId=가 있으면 목록에 없어도 그것(서버가 정한다), 없거나 형식이 틀리면 기본 선택', () => {
     assert.equal(pickEventId(list, '9'), 9);
-    assert.equal(pickEventId(list, '12'), 7);
+    assert.equal(pickEventId(list, '12'), 12); // 열리지 않은 이벤트 · 지난 이벤트 — 없으면 404로 다시 고른다
     assert.equal(pickEventId(list, 'abc'), 7);
     assert.equal(pickEventId(list, null), 7);
-    assert.equal(pickEventId({ events: [], defaultEventId: null }, '7'), null);
+    assert.equal(pickEventId({ events: [], defaultEventId: null }, '7'), 7);
+    assert.equal(pickEventId({ events: [], defaultEventId: null }, null), null);
+  });
+
+  const unavailable = monitoring({ eventId: 12, name: '배포 실패 이벤트', state: 'UNAVAILABLE', steps: [], kpi: null, series: null });
+
+  test('목록에 없는 이벤트를 보고 있으면 현황 응답으로 맨 위에 항목 — 열리지 않은 이벤트는 모니터링 불가', () => {
+    assert.deepEqual(selectOptions(list.events, 12, unavailable, ms(NOW)), [
+      { eventId: 12, label: '배포 실패 이벤트 · 모니터링 불가' },
+      { eventId: 7, label: '가을 감사 · 진행 중' },
+      { eventId: 9, label: '가을 감사 · 종료 10-27' },
+    ]);
+    // 응답 전(또는 다른 이벤트 응답)이면 목록 그대로
+    assert.equal(selectOptions(list.events, 12, undefined, ms(NOW)).length, 2);
+    assert.equal(selectOptions(list.events, 12, monitoring({ eventId: 7 }), ms(NOW)).length, 2);
+  });
+
+  test('보는 중 열리지 않게 됐는데 목록이 아직 옛 값이면 그 항목만 모니터링 불가', () => {
+    const now7 = monitoring({ eventId: 7, state: 'UNAVAILABLE' });
+    assert.deepEqual(selectOptions(list.events, 7, now7, ms(NOW)).map((o) => o.label), ['가을 감사 · 모니터링 불가', '가을 감사 · 종료 10-27']);
+  });
+
+  test('목록에서 빠진 지난 이벤트는 현황 상태로 문구', () => {
+    const old = monitoring({ eventId: 30, name: '여름 이벤트', state: 'ENDED', period: { ...monitoring().period, hostingEndAt: '2026-10-10T15:40:00+09:00' } });
+    assert.equal(detailCaption(old, ms(NOW)), '종료 10-10');
+    assert.equal(detailCaption(monitoring({ state: 'ENTRY_OPEN' }), ms(NOW)), '입장 중');
+    assert.equal(detailCaption(unavailable, ms(NOW)), '모니터링 불가');
   });
 });
 
@@ -340,8 +376,9 @@ describe('경계 시각 즉시 재조회', () => {
     assert.equal(boundaryToRefetch(live, ms('2026-10-27T15:40:00+09:00'), fired), '7@2026-10-27T15:40:00+09:00');
   });
 
-  test('종료 뒤에는 부르지 않는다', () => {
+  test('종료 뒤 · 열리지 않은 이벤트는 부르지 않는다(15초 주기만)', () => {
     assert.equal(boundaryToRefetch(monitoring({ state: 'ENDED', serverTime: '2026-10-27T13:00:00+09:00' }), ms(NOW), new Set()), null);
+    assert.equal(boundaryToRefetch(monitoring({ state: 'UNAVAILABLE', serverTime: '2026-10-27T13:00:00+09:00' }), ms(NOW), new Set()), null);
   });
 });
 

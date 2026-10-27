@@ -121,15 +121,17 @@ public class MonitoringService {
 
 		Instant soldOutAt = phase == MonitoringPhase.SOLD_OUT
 				? MonitoringRules.soldOutAt(m.grid(), m.stock(), remaining, m.at()) : null;
-		Header header = new Header(phase == MonitoringPhase.ENDED ? null
+		// 열리지 않은 이벤트(배포 · 호스팅 시작 실패)는 빈 상태만 — 남은 시간 · 진행 단계 없음
+		boolean unavailable = phase == MonitoringPhase.UNAVAILABLE;
+		Header header = new Header(phase == MonitoringPhase.ENDED || unavailable ? null
 				: Math.max(0, Duration.between(now, e.hostingEndAt()).toSeconds()), offset(soldOutAt),
 				queried ? MonitoringRules.service(m, stale) : null);
 		return new EventMonitoring(e.eventId(), e.name(), phase,
-				e.eventStatus() == EventStatus.OPEN_FAILED && phase != MonitoringPhase.ENDED, stale,
+				e.eventStatus() == EventStatus.OPEN_FAILED && phase != MonitoringPhase.ENDED && !unavailable, stale,
 				m == null ? null : offset(m.at()), Kst.toOffset(now),
 				new Period(Kst.toOffset(e.hostingStartAt()), Kst.toOffset(entryAt), Kst.toOffset(e.startAt()),
 						Kst.toOffset(e.endAt()), Kst.toOffset(e.hostingEndAt()), detail.domain()),
-				MonitoringRules.steps(phase, now, detail),
+				unavailable ? List.of() : MonitoringRules.steps(phase, now, detail),
 				header, queried ? kpi(detail, phase, m, remaining) : null, queried ? series(e, phase, m, remaining) : null,
 				queried && m != null ? MonitoringRules.count(m.rejects5m()) : null);
 	}
@@ -169,7 +171,8 @@ public class MonitoringService {
 	}
 
 	/**
-	 * 드롭다운(명세 5절): 승인된 이벤트 중 진행 중(입장 ~ 종료) → 오늘 시작 예정 → 최근 7일 종료. 내일 이후 예정은 넣지 않는다.
+	 * 드롭다운(명세 5절): 승인된 이벤트 중 진행 중(입장 ~ 종료) → 오늘 시작 예정 → 최근 7일 종료. 내일 이후 예정과
+	 * 열리지 않은 이벤트(배포 · 호스팅 시작 실패, UNAVAILABLE)는 넣지 않는다.
 	 * 기본 선택: 시작한 이벤트 → 입장 중 → 가장 가까운 예정 → 가장 최근 종료.
 	 */
 	static EventList eventList(List<EventView> views, LocalDateTime now) {
@@ -189,6 +192,9 @@ public class MonitoringService {
 					if (!e.hostingEndAt().isBefore(now.minus(RECENT_ENDED))) {
 						ended.add(item(e, Group.ENDED, phase));
 					}
+				}
+				case UNAVAILABLE -> {
+					// 배포 · 호스팅 시작 실패는 넣지 않는다 — 상태로 거르므로 재실행으로 회복되면 다시 나온다
 				}
 			}
 		}

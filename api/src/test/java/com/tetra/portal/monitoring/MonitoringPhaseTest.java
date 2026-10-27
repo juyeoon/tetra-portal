@@ -51,6 +51,21 @@ class MonitoringPhaseTest {
 	}
 
 	@Test
+	void 배포_호스팅_시작_실패는_시각과_관계없이_모니터링_불가_회복되면_시각대로() {
+		for (HostingStatus failed : new HostingStatus[] { HostingStatus.DEPLOY_FAILED, HostingStatus.HOSTING_FAILED }) {
+			for (LocalDateTime now : new LocalDateTime[] { ENTRY.minusMinutes(30), START.plusMinutes(10), HOSTING_END }) {
+				assertThat(MonitoringPhase.of(START, HOSTING_END, EventStatus.SCHEDULED, failed, now)).as(failed + " " + now)
+					.isEqualTo(MonitoringPhase.UNAVAILABLE);
+			}
+		}
+		// 운영자 재실행으로 DEPLOYED · HOSTING이 되면 다시 시각대로
+		assertThat(MonitoringPhase.of(START, HOSTING_END, EventStatus.SCHEDULED, HostingStatus.DEPLOYED,
+				ENTRY.minusMinutes(30))).isEqualTo(MonitoringPhase.BEFORE_ENTRY);
+		assertThat(MonitoringPhase.of(START, HOSTING_END, EventStatus.OPEN, HostingStatus.HOSTING, START.plusMinutes(10)))
+			.isEqualTo(MonitoringPhase.LIVE);
+	}
+
+	@Test
 	void 품절은_진행_중에_재고가_0일_때만() {
 		assertThat(MonitoringPhase.LIVE.withRemaining(0L)).isEqualTo(MonitoringPhase.SOLD_OUT);
 		assertThat(MonitoringPhase.LIVE.withRemaining(1L)).isEqualTo(MonitoringPhase.LIVE);

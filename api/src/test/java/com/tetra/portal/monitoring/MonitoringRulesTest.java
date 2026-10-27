@@ -192,6 +192,10 @@ class MonitoringRulesTest {
 
 	static final LocalDateTime HOSTING_END = START.plusMinutes(40);
 
+	static final LocalDateTime HOSTED_AT = HOSTING_START.plusMinutes(1);
+
+	static final LocalDateTime OPENED_AT = ENTRY.plusSeconds(10);
+
 	/** 상태 · 첫 전이 로그 시각(HOSTING · OPEN, 없으면 null) */
 	static EventDetail detail(HostingStatus hosting, EventStatus event, LocalDateTime hostingStartedAt,
 			LocalDateTime openedAt, boolean resultReady) {
@@ -207,6 +211,10 @@ class MonitoringRulesTest {
 		return stepsOf(phase, now, detail).stream().map(Step::status).toList();
 	}
 
+	static List<Boolean> delays(MonitoringPhase phase, LocalDateTime now, EventDetail detail) {
+		return stepsOf(phase, now, detail).stream().map(Step::delayed).toList();
+	}
+
 	static final StepStatus D = StepStatus.DONE;
 
 	static final StepStatus C = StepStatus.CURRENT;
@@ -215,42 +223,41 @@ class MonitoringRulesTest {
 
 	static final StepStatus F = StepStatus.FAILED;
 
+	static final StepStatus S = StepStatus.SKIPPED;
+
 	static final EventDetail DEPLOYED = detail(HostingStatus.DEPLOYED, EventStatus.SCHEDULED, null, null, false);
 
-	static final EventDetail HOSTED = detail(HostingStatus.HOSTING, EventStatus.SCHEDULED, HOSTING_START.plusMinutes(1),
-			null, false);
+	static final EventDetail HOSTED = detail(HostingStatus.HOSTING, EventStatus.SCHEDULED, HOSTED_AT, null, false);
 
-	static final EventDetail OPENED = detail(HostingStatus.HOSTING, EventStatus.OPEN, HOSTING_START.plusMinutes(1),
-			ENTRY.plusSeconds(10), false);
+	static final EventDetail OPENED = detail(HostingStatus.HOSTING, EventStatus.OPEN, HOSTED_AT, OPENED_AT, false);
 
 	@Test
 	void 호스팅_시작_전에는_호스팅_시작이_현재() {
 		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, HOSTING_START.minusMinutes(1), DEPLOYED);
 		assertThat(steps).extracting(Step::status).containsExactly(C, U, U, U, U);
-		assertThat(steps.get(0).delayed()).isFalse();
+		assertThat(steps).extracting(Step::delayed).containsOnly(false);
 		assertThat(steps.get(0).actualAt()).isNull();
 	}
 
 	@Test
 	void 호스팅_시작_시각이_지났는데_DEPLOYED면_현재_그대로_지연() {
 		// 시각만으로 완료하지 않는다 — WF2-1이 확인 중이거나 돌지 않았다
-		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, HOSTING_START, DEPLOYED);
-		assertThat(steps).extracting(Step::status).containsExactly(C, U, U, U, U);
-		assertThat(steps.get(0).delayed()).isTrue();
-		assertThat(stepsOf(MonitoringPhase.ENTRY_OPEN, ENTRY, DEPLOYED)).extracting(Step::status)
-			.containsExactly(C, U, U, U, U);
+		assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, HOSTING_START, DEPLOYED)).containsExactly(C, U, U, U, U);
+		assertThat(delays(MonitoringPhase.BEFORE_ENTRY, HOSTING_START, DEPLOYED)).containsExactly(true, false, false, false,
+				false);
+		assertThat(statuses(MonitoringPhase.ENTRY_OPEN, ENTRY, DEPLOYED)).containsExactly(C, U, U, U, U);
 	}
 
 	@Test
 	void HOSTING이면_완료_시각은_첫_전이_로그() {
 		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, HOSTING_START.plusMinutes(2), HOSTED);
 		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
-		assertThat(steps.get(0).actualAt().toLocalDateTime()).isEqualTo(HOSTING_START.plusMinutes(1));
+		assertThat(steps.get(0).actualAt().toLocalDateTime()).isEqualTo(HOSTED_AT);
 		assertThat(steps.get(0).delayed()).isFalse();
 	}
 
 	@Test
-	void 로그가_없어도_HOSTING_뒤_상태면_완료() {
+	void 로그가_없어도_HOSTING_뒤_상태면_호스팅_시작은_완료() {
 		for (HostingStatus status : List.of(HostingStatus.HOSTING, HostingStatus.ENDED, HostingStatus.END_FAILED)) {
 			var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(90),
 					detail(status, EventStatus.SCHEDULED, null, null, false));
@@ -260,64 +267,77 @@ class MonitoringRulesTest {
 	}
 
 	@Test
-	void HOSTING_FAILED면_호스팅_시작은_실패() {
-		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(90),
-				detail(HostingStatus.HOSTING_FAILED, EventStatus.SCHEDULED, null, null, false));
-		assertThat(steps).extracting(Step::status).containsExactly(F, U, U, U, U);
-		assertThat(steps.get(0).delayed()).isFalse();
-	}
-
-	@Test
 	void 입장_전에는_입장이_현재() {
-		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), HOSTED);
-		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
-		assertThat(steps.get(1).delayed()).isFalse();
+		assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), HOSTED)).containsExactly(D, C, U, U, U);
+		assertThat(delays(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), HOSTED)).containsOnly(false);
 	}
 
 	@Test
 	void 입장_시각이_지났는데_OPEN이_아니면_입장이_현재_그대로_지연() {
-		var steps = stepsOf(MonitoringPhase.ENTRY_OPEN, ENTRY, HOSTED);
-		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
-		assertThat(steps.get(1).delayed()).isTrue();
+		assertThat(statuses(MonitoringPhase.ENTRY_OPEN, ENTRY, HOSTED)).containsExactly(D, C, U, U, U);
+		assertThat(delays(MonitoringPhase.ENTRY_OPEN, ENTRY, HOSTED)).containsExactly(false, true, false, false, false);
 		// 시작 시각이 지나도 OPEN이 안 됐으면 이벤트 진행은 현재가 되지 않는다
-		var late = stepsOf(MonitoringPhase.LIVE, START.plusMinutes(1), HOSTED);
-		assertThat(late).extracting(Step::status).containsExactly(D, C, U, U, U);
-		assertThat(late.get(1).delayed()).isTrue();
+		assertThat(statuses(MonitoringPhase.LIVE, START.plusMinutes(1), HOSTED)).containsExactly(D, C, U, U, U);
+		assertThat(delays(MonitoringPhase.LIVE, START.plusMinutes(1), HOSTED).get(1)).isTrue();
 	}
 
 	@Test
-	void OPEN이면_입장_중_시각은_첫_전이_로그() {
-		var steps = stepsOf(MonitoringPhase.ENTRY_OPEN, ENTRY.plusSeconds(30), OPENED);
-		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
-		assertThat(steps.get(1).delayed()).isFalse();
-		assertThat(steps.get(1).actualAt().toLocalDateTime()).isEqualTo(ENTRY.plusSeconds(10));
+	void 입장_이후_시작_전에는_입장이_현재_시작하면_이벤트_진행이_현재() {
+		var entry = stepsOf(MonitoringPhase.ENTRY_OPEN, ENTRY.plusSeconds(30), OPENED);
+		assertThat(entry).extracting(Step::status).containsExactly(D, C, U, U, U);
+		assertThat(entry.get(1).delayed()).isFalse();
+		assertThat(entry.get(1).actualAt().toLocalDateTime()).isEqualTo(OPENED_AT);
+		assertThat(statuses(MonitoringPhase.LIVE, START, OPENED)).containsExactly(D, D, C, U, U);
+		assertThat(statuses(MonitoringPhase.SOLD_OUT, START.plusMinutes(10), OPENED)).containsExactly(D, D, C, U, U);
 	}
 
 	@Test
 	void OPEN_FAILED면_입장은_실패_입장_시각_전후_모두() {
-		var failed = detail(HostingStatus.HOSTING, EventStatus.OPEN_FAILED, HOSTING_START, null, false);
+		var failed = detail(HostingStatus.HOSTING, EventStatus.OPEN_FAILED, HOSTED_AT, null, false);
 		// 준비 실패는 종료 전까지 BEFORE_ENTRY
 		for (LocalDateTime now : List.of(ENTRY.minusMinutes(1), ENTRY, START.plusMinutes(1))) {
-			var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, now, failed);
-			assertThat(steps).extracting(Step::status).as(now.toString()).containsExactly(D, F, U, U, U);
-			assertThat(steps.get(1).delayed()).isFalse();
+			assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, now, failed)).as(now.toString()).containsExactly(D, F, U, U, U);
+			assertThat(delays(MonitoringPhase.BEFORE_ENTRY, now, failed)).containsOnly(false);
 		}
 	}
 
 	@Test
-	void 실패는_앞_단계가_끝나지_않았어도_실패() {
-		var both = detail(HostingStatus.HOSTING_FAILED, EventStatus.OPEN_FAILED, null, null, false);
-		assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, ENTRY, both)).containsExactly(F, F, U, U, U);
+	void 종료_전에는_종료_칸이_지연이_아니다() {
+		assertThat(delays(MonitoringPhase.LIVE, HOSTING_END.minusSeconds(1), OPENED)).containsOnly(false);
 	}
 
 	@Test
-	void 진행_중_품절_종료() {
-		assertThat(statuses(MonitoringPhase.LIVE, START.plusMinutes(10), OPENED)).containsExactly(D, D, C, U, U);
-		assertThat(statuses(MonitoringPhase.SOLD_OUT, START.plusMinutes(10), OPENED)).containsExactly(D, D, C, U, U);
-		var ended = detail(HostingStatus.ENDED, EventStatus.EXPIRED, null, null, false);
-		assertThat(statuses(MonitoringPhase.ENDED, START.plusMinutes(50), ended)).containsExactly(D, D, D, D, C); // 집계 중
-		var ready = detail(HostingStatus.ENDED, EventStatus.EXPIRED, null, null, true);
-		assertThat(statuses(MonitoringPhase.ENDED, START.plusMinutes(50), ready)).containsExactly(D, D, D, D, D); // 완료
+	void 정상_이벤트는_종료_시각이_지나도_WF4가_끝날_때까지_종료_처리_중() {
+		// hosting_end_at — 상태는 시각으로 ENDED지만 아직 HOSTING · OPEN. 이벤트 진행은 완료, 종료는 현재 + 지연(종료 처리 중)
+		var steps = stepsOf(MonitoringPhase.ENDED, HOSTING_END, OPENED);
+		assertThat(steps).extracting(Step::status).containsExactly(D, D, D, C, U);
+		assertThat(steps).extracting(Step::delayed).containsExactly(false, false, false, true, false);
+		// WF4 성공(ENDED · EXPIRED) — 종료 완료, 결과 집계가 현재(집계 중) → 결과가 준비되면 완료
+		var wf4 = detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, OPENED_AT, false);
+		assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), wf4)).containsExactly(D, D, D, D, C);
+		assertThat(delays(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), wf4)).containsOnly(false);
+		var ready = detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, OPENED_AT, true);
+		assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(30), ready)).containsExactly(D, D, D, D, D);
+	}
+
+	@Test
+	void END_FAILED면_종료는_현재_종료_처리_중() {
+		var endFailed = detail(HostingStatus.END_FAILED, EventStatus.OPEN, HOSTED_AT, OPENED_AT, false);
+		assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), endFailed)).containsExactly(D, D, D, C, U);
+		assertThat(delays(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), endFailed).get(3)).isTrue();
+	}
+
+	@Test
+	void OPEN이_한_번도_안_된_채_끝나면_입장은_실패_뒤_단계는_진행_안_됨() {
+		// OPEN_FAILED인 채 종료 시각 · WF4가 EXPIRED로 바꾼 뒤(EXPIRED는 OPEN의 증거가 아니다) · 결과 행이 있어도 · 준비가 아예 안 돈 경우
+		var cases = List.of(detail(HostingStatus.HOSTING, EventStatus.OPEN_FAILED, HOSTED_AT, null, false),
+				detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, null, false),
+				detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, null, true),
+				detail(HostingStatus.HOSTING, EventStatus.SCHEDULED, HOSTED_AT, null, false));
+		for (EventDetail d : cases) {
+			assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), d)).containsExactly(D, F, S, S, S);
+			assertThat(delays(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), d)).containsOnly(false);
+		}
 	}
 
 	@Test
@@ -326,10 +346,9 @@ class MonitoringRulesTest {
 		assertThat(steps).extracting(Step::step).containsExactly(StepKey.values());
 		assertThat(steps).extracting(s -> s.at() == null ? null : s.at().toLocalDateTime())
 			.containsExactly(HOSTING_START, ENTRY, START, HOSTING_END, null);
-		// 실제 시각 · 지연은 호스팅 시작 · 입장만
+		// 실제 시각은 호스팅 시작 · 입장만
 		assertThat(steps).extracting(s -> s.actualAt() == null ? null : s.actualAt().toLocalDateTime())
-			.containsExactly(HOSTING_START.plusMinutes(1), ENTRY.plusSeconds(10), null, null, null);
-		assertThat(steps.subList(2, 5)).extracting(Step::delayed).containsOnly(false);
+			.containsExactly(HOSTED_AT, OPENED_AT, null, null, null);
 	}
 
 }
