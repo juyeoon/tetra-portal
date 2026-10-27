@@ -187,14 +187,33 @@ class MonitoringRulesTest {
 				START.plusMinutes(40), resultReady).stream().map(Step::status).toList();
 	}
 
+	static final StepStatus D = StepStatus.DONE;
+
+	static final StepStatus C = StepStatus.CURRENT;
+
+	static final StepStatus U = StepStatus.UPCOMING;
+
 	@Test
-	void 가장_늦게_도착한_단계가_현재() {
-		var D = StepStatus.DONE;
-		var C = StepStatus.CURRENT;
-		var U = StepStatus.UPCOMING;
-		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(120), false)).containsExactly(U, U, U, U, U);
-		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(90), false)).containsExactly(C, U, U, U, U);
+	void 완료되지_않은_첫_단계가_현재_호스팅_시작은_지나면_완료() {
+		// 호스팅 시작 = START − 100분. 그전에는 호스팅 시작이 현재
+		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(101), false)).containsExactly(C, U, U, U, U);
+		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(100), false)).containsExactly(D, C, U, U, U);
+	}
+
+	@Test
+	void 입장_전에는_입장이_현재() {
+		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(90), false)).containsExactly(D, C, U, U, U);
 		assertThat(steps(MonitoringPhase.ENTRY_OPEN, START.minusMinutes(30), false)).containsExactly(D, C, U, U, U);
+	}
+
+	@Test
+	void 준비_실패도_입장_전과_같다_입장_시각이_지나도() {
+		// 준비 실패는 종료 전까지 BEFORE_ENTRY — 입장(START − 60분)이 지나도 입장이 현재
+		assertThat(steps(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(40), false)).containsExactly(D, C, U, U, U);
+	}
+
+	@Test
+	void 진행_중_품절_종료() {
 		assertThat(steps(MonitoringPhase.LIVE, START.plusMinutes(10), false)).containsExactly(D, D, C, U, U);
 		assertThat(steps(MonitoringPhase.SOLD_OUT, START.plusMinutes(10), false)).containsExactly(D, D, C, U, U);
 		assertThat(steps(MonitoringPhase.ENDED, START.plusMinutes(50), false)).containsExactly(D, D, D, D, C); // 집계 중
