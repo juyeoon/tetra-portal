@@ -121,30 +121,24 @@ final class MonitoringRules {
 	}
 
 	/**
-	 * 진행 단계 5개. 그 단계에 들어섰으면(도착) 가장 늦게 도착한 단계가 CURRENT, 앞은 DONE, 뒤는 UPCOMING.
-	 * 결과 집계는 종료와 함께 도착하고, 결과가 준비되면 DONE. 준비 실패(입장 전처럼 보임)는 입장에 도착하지 않는다.
+	 * 진행 단계 5개(2026-10-27 캡처 검토). 단계마다 끝났는지(DONE)만 정하고, 완료되지 않은 첫 단계가 CURRENT, 그 뒤는 UPCOMING.
+	 * - 호스팅 시작은 시점 단계: hosting_start_at이 지났으면(또는 입장 뒤) 완료. 그전에는 호스팅 시작이 현재("HH:mm 예정", web)
+	 * - 입장: 이벤트 시작(진행 중 · 품절 · 종료)부터 완료 — 입장 전(준비 실패 포함) · 입장 ~ 시작에는 입장이 현재
+	 * - 이벤트 진행 · 종료: 종료면 완료. 결과 집계: 종료 뒤 결과가 준비되면 완료(아니면 현재 = 집계 중)
 	 */
 	static List<Step> steps(MonitoringPhase phase, LocalDateTime now, LocalDateTime hostingStartAt,
 			LocalDateTime entryAt, LocalDateTime startAt, LocalDateTime hostingEndAt, boolean resultReady) {
 		boolean ended = phase == MonitoringPhase.ENDED;
-		boolean live = ended || phase == MonitoringPhase.LIVE || phase == MonitoringPhase.SOLD_OUT;
-		boolean entry = live || phase == MonitoringPhase.ENTRY_OPEN;
-		boolean hosting = entry || !now.isBefore(hostingStartAt);
-		boolean[] arrived = { hosting, entry, live, ended, ended };
+		boolean started = ended || phase == MonitoringPhase.LIVE || phase == MonitoringPhase.SOLD_OUT;
+		boolean[] done = { phase != MonitoringPhase.BEFORE_ENTRY || !now.isBefore(hostingStartAt), started, ended, ended,
+				ended && resultReady };
 		LocalDateTime[] at = { hostingStartAt, entryAt, startAt, hostingEndAt, null };
 		StepKey[] keys = StepKey.values();
-		int current = -1;
-		for (int i = 0; i < arrived.length; i++) {
-			if (arrived[i]) {
-				current = i;
-			}
-		}
 		List<Step> steps = new ArrayList<>(keys.length);
+		boolean currentTaken = false;
 		for (int i = 0; i < keys.length; i++) {
-			StepStatus status = i < current ? StepStatus.DONE : i == current ? StepStatus.CURRENT : StepStatus.UPCOMING;
-			if (keys[i] == StepKey.AGGREGATE && ended && resultReady) {
-				status = StepStatus.DONE;
-			}
+			StepStatus status = done[i] ? StepStatus.DONE : currentTaken ? StepStatus.UPCOMING : StepStatus.CURRENT;
+			currentTaken |= !done[i];
 			steps.add(new Step(keys[i], Kst.toOffset(at[i]), status));
 		}
 		return steps;

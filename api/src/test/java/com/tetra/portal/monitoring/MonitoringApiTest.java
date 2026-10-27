@@ -227,6 +227,9 @@ class MonitoringApiTest extends IntegrationTest {
 		mvc.perform(get("/api/portal/monitoring/events/{id}", 602).cookie(loginCookie(A)))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.state").value("BEFORE_ENTRY"))
+			// 호스팅 시작(시작 − 2시간) 전 — 완료되지 않은 첫 단계(호스팅 시작)가 현재
+			.andExpect(jsonPath("$.steps[0].status").value("CURRENT"))
+			.andExpect(jsonPath("$.steps[1].status").value("UPCOMING"))
 			.andExpect(jsonPath("$.kpi").doesNotExist())
 			.andExpect(jsonPath("$.header.service").doesNotExist());
 		assertThat(prometheus.requests()).isEmpty();
