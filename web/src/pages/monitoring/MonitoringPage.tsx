@@ -18,7 +18,7 @@ import KpiCards from './components/KpiCards';
 import PerMinuteChart from './components/PerMinuteChart';
 import ProgressCard from './components/ProgressCard';
 import StockChart from './components/StockChart';
-import { POLL_INTERVAL_MS, TEXT, boundaryToRefetch, estimateNow, periodText, pickEventId, selectOptions, showsMetrics } from './monitoringView';
+import { POLL_INTERVAL_MS, TEXT, boundaryToRefetch, estimateNow, periodText, pickEventId, pollingDone, selectOptions, showsMetrics } from './monitoringView';
 
 /** 1초마다 다시 그린다 — 남은 시간 · 경계 시각 확인용 */
 function useSecondTick() {
@@ -32,7 +32,8 @@ function useSecondTick() {
 
 /**
  * UI-TP-11 모니터링 — 이벤트 실시간 현황(15초마다 갱신되는 근사값, 확정 결과는 결과 탭).
- * 목록 · 현황을 15초마다 같이 새로 고친다(탭이 숨겨지면 멈춤, 종료 이벤트는 현황을 한 번만).
+ * 목록 · 현황을 15초마다 같이 새로 고친다(탭이 숨겨지면 멈춤). 종료(end_at) 뒤에는 카드 · 그래프 대신 종료 안내이고,
+ * 결과 집계가 끝날(완료 · 실패) 때까지 진행 단계만 15초마다 갱신한 뒤 멈춘다(서버는 Prometheus를 읽지 않는다).
  * 선택은 처음 한 번 정한다(?eventId= — 목록에 없어도 → defaultEventId). 직접 고르면 ?eventId=에 남기고, 목록이 새로 와도 바꾸지 않는다.
  * 404(없음 · 승인 전 · 권한 없음)면 ?eventId=를 지우고 새 목록의 defaultEventId로. 401은 client가 로그인 화면으로.
  * 열리지 않은 이벤트(UNAVAILABLE)는 빈 상태만 — 갱신은 계속해 재실행으로 회복되면 그대로 현황이 보인다.
@@ -45,7 +46,7 @@ export default function MonitoringPage() {
   const detail = usePolling(() => getEventMonitoring(selected!), [selected], {
     intervalMs: POLL_INTERVAL_MS,
     enabled: selected !== null,
-    stopWhen: (d) => d.state === 'ENDED',
+    stopWhen: pollingDone,
   });
   const tick = useSecondTick();
   const fired = useRef(new Set<string>());
@@ -75,7 +76,7 @@ export default function MonitoringPage() {
   const m = detail.data;
   const nowMs = m && detail.receivedAt != null ? estimateNow(m.serverTime, performance.now() - detail.receivedAt) : 0;
 
-  // 경계 시각(입장 · 시작 · 종료)을 넘으면 15초를 기다리지 않고 한 번만 다시 부른다
+  // 경계 시각(입장 · 시작 · 종료 end_at)을 넘으면 15초를 기다리지 않고 한 번만 다시 부른다
   useEffect(() => {
     if (!m) return;
     const key = boundaryToRefetch(m, nowMs, fired.current);

@@ -11,20 +11,19 @@ import SectionTitle from '@/components/common/SectionTitle';
 import { chartColors, text } from '@/theme/theme';
 import type { EventMonitoring, MonitoringSeries } from '@/types';
 import { formatNumber } from '@/utils/format';
-import { stockChart, stockSubtitle, tickMinutes, timeTicks } from '../monitoringView';
-import { Legend, chartSx, minuteLabel } from './chartParts';
+import { chartAxis, minuteSlot, stockChart, stockSubtitle } from '../monitoringView';
+import { CHART_HEIGHT, CHART_MARGIN, Legend, TOOLTIP_PLACEMENT, Y_AXIS_WIDTH, chartSx, minuteXAxis } from './chartParts';
 
-/** 남은 재고 · 소진 예상 — 재고 선 + 소진 예상 점선. 품절이면 예상 대신 품절 지점(주황 점) */
+/**
+ * 남은 재고 · 소진 예상 — 재고 계단(칸 = 그 분에 읽은 값, 분당 막대와 같은 칸) + 소진 예상 점선(직선).
+ * 품절이면 예상 대신 품절 칸(주황 점). 가로축은 분당 그래프와 같은 1분 칸이라 범위 · 눈금이 맞는다
+ */
 export default function StockChart({ m, series, nowMs }: { m: EventMonitoring; series: MonitoringSeries; nowMs: number }) {
   const soldOut = m.state === 'SOLD_OUT';
-  const d = stockChart(series, m.state, m.header.soldOutAt);
-  const start = new Date(m.period.startAt);
-  const lastActual = series.stock.length > 0 ? new Date(series.stock[series.stock.length - 1].t) : null;
+  const axis = chartAxis(series, m.state, m.period.endAt);
+  const d = stockChart(series, m.state, m.header.soldOutAt, axis);
+  const startAt = minuteSlot(axis, m.period.startAt);
   const count = (v: number | null) => (v == null ? null : `${formatNumber(v)}개`);
-  // 분당 그래프와 같은 정각 간격 — 소진 예상 시각까지(데이터 없는 점선 구간 포함)
-  const from = d.x[0] ?? 0;
-  const to = d.x[d.x.length - 1] ?? 0;
-  const ticks = timeTicks(from, to, tickMinutes((to - from) / 60_000 + 1)).map((t) => new Date(t));
 
   return (
     <Card sx={{ p: 3 }}>
@@ -43,20 +42,21 @@ export default function StockChart({ m, series, nowMs }: { m: EventMonitoring; s
       <Typography variant="body2" sx={{ mb: 1, color: text.tertiary }}>
         {stockSubtitle(m, nowMs)}
       </Typography>
-      {d.x.length === 0 ? (
+      {axis.minutes.length === 0 ? (
         <Typography variant="body2" sx={{ py: 6, textAlign: 'center', color: text.tertiary }}>
           아직 기록이 없어요.
         </Typography>
       ) : (
         <ChartContainer
-          height={260}
-          margin={{ top: 20, right: 28, bottom: 0, left: 0 }}
-          xAxis={[{ id: 'x', scaleType: 'time', data: d.x.map((t) => new Date(t)), valueFormatter: (v: Date) => minuteLabel(v.getTime()) }]}
-          yAxis={[{ id: 'y', width: 64, min: 0, valueFormatter: (v: number) => formatNumber(v) }]}
+          height={CHART_HEIGHT}
+          margin={CHART_MARGIN}
+          xAxis={[minuteXAxis(axis)]}
+          yAxis={[{ id: 'y', width: Y_AXIS_WIDTH, min: 0, valueFormatter: (v: number) => formatNumber(v) }]}
           series={[
-            { type: 'line', id: 'remaining', label: '남은 재고', color: chartColors.issued, data: d.remaining, showMark: false, valueFormatter: count },
+            // 계단 — 분 사이를 곡선으로 잇지 않는다(칸 하나 = 그 분의 값)
+            { type: 'line', id: 'remaining', label: '남은 재고', color: chartColors.issued, curve: 'step', data: d.remaining, showMark: false, valueFormatter: count },
             ...(d.hasProjection
-              ? [{ type: 'line' as const, id: 'projection', label: '예상', color: chartColors.issued, data: d.projection, showMark: false, valueFormatter: count }]
+              ? [{ type: 'line' as const, id: 'projection', label: '예상', color: chartColors.issued, curve: 'linear' as const, connectNulls: true, data: d.projection, showMark: false, valueFormatter: count }]
               : []),
             ...(soldOut ? [{ type: 'line' as const, id: 'soldOut', label: '품절', color: chartColors.soldOut, data: d.soldOut, showMark: true, valueFormatter: count }] : []),
           ]}
@@ -69,12 +69,12 @@ export default function StockChart({ m, series, nowMs }: { m: EventMonitoring; s
           <ChartsGrid horizontal />
           <LinePlot />
           <MarkPlot />
-          {start.getTime() >= d.x[0] && start.getTime() <= d.x[d.x.length - 1] && <ChartsReferenceLine x={start} label="시작" labelAlign="start" />}
-          {d.hasProjection && lastActual && <ChartsReferenceLine x={lastActual} label="지금" labelAlign="start" />}
-          <ChartsXAxis tickInterval={ticks} />
+          {startAt != null && <ChartsReferenceLine x={startAt} label="시작" labelAlign="start" />}
+          {d.hasProjection && d.lastActual != null && <ChartsReferenceLine x={d.lastActual} label="지금" labelAlign="start" />}
+          <ChartsXAxis />
           <ChartsYAxis />
-          <ChartsAxisHighlight x="line" />
-          <ChartsTooltip trigger="axis" />
+          <ChartsAxisHighlight x="band" />
+          <ChartsTooltip trigger="axis" placement={TOOLTIP_PLACEMENT} />
         </ChartContainer>
       )}
     </Card>

@@ -1,7 +1,5 @@
 package com.tetra.portal.monitoring;
 
-import java.time.Duration;
-
 import com.tetra.portal.tenancy.TenantIds;
 
 /**
@@ -15,10 +13,8 @@ final class MonitoringQueries {
 	/** 발급(claim) 경로 — http_server_requests uri 라벨 값 그대로(정확히 일치라 정규식 이스케이프 없음) */
 	static final String CLAIM_URI = "/api/issuance/events/{eventId}/coupons/claim";
 
-	/** increase 범위 하한 · 상한(초) — Console PromQueries와 같게 60초 ~ 7일(Prometheus 보존 기간) */
-	private static final long MIN_RANGE_SECONDS = 60;
-
-	private static final long MAX_RANGE_SECONDS = Duration.ofDays(7).toSeconds();
+	/** 서비스 판정에서 뺄 uri — 수집(actuator)과 헬스 체크. 실제 고객 요청만 본다 */
+	static final String EXCLUDED_URIS = "/actuator.*|/api/issuance/health";
 
 	private final String sel;
 
@@ -51,12 +47,6 @@ final class MonitoringQueries {
 
 	// ---- 카운터 (sum) ----
 
-	/** 품절 응답 — 입장부터 지금까지 */
-	String soldOutSince(Duration range) {
-		return "sum(increase(tetra_claims_total{%s,result=\"sold_out\",replay=\"false\"}[%ds]))".formatted(sel,
-				rangeSeconds(range));
-	}
-
 	/** 최근 1분 처리 수(성공 + 품절) */
 	String processedLastMinute() {
 		return "sum(increase(tetra_claims_total{%s,replay=\"false\"}[1m]))".formatted(sel);
@@ -75,11 +65,12 @@ final class MonitoringQueries {
 	// ---- 서비스 판정 (최근 1분) ----
 
 	String rps() {
-		return "sum(rate(http_server_requests_seconds_count{%s,uri!~\"/actuator.*\"}[1m]))".formatted(sel);
+		return "sum(rate(http_server_requests_seconds_count{%s,uri!~\"%s\"}[1m]))".formatted(sel, EXCLUDED_URIS);
 	}
 
 	String errorRps() {
-		return "sum(rate(http_server_requests_seconds_count{%s,uri!~\"/actuator.*\",status=~\"5..\"}[1m]))".formatted(sel);
+		return "sum(rate(http_server_requests_seconds_count{%s,uri!~\"%s\",status=~\"5..\"}[1m]))".formatted(sel,
+				EXCLUDED_URIS);
 	}
 
 	/** 발급 p95(초) */
@@ -88,20 +79,18 @@ final class MonitoringQueries {
 			.formatted(sel, CLAIM_URI);
 	}
 
-	// ---- 범위 쿼리 (step 1m). 남은 재고 추이 · 최고 동시 접속은 stockRemaining() · sessionsActive()를 범위로 ----
+	// ---- 누적 카운터 원값(Pod별) — 범위(step 1m)와 지금 값으로 받아 분당 증가분 · 품절 응답 누적을 서버가 만든다 ----
+	// increase(...[1m])는 창 안 증가분을 외삽하고(수집 15초면 약 1.33배) 창 사이를 빠뜨려 막대 합이 확정값과 달랐다(이벤트 12).
+	// Pod별 직전 값과의 차이는 PromValues.perMinute. 남은 재고 추이 · 최고 동시 접속은 stockRemaining() · sessionsActive()를 범위로
 
-	/** 분당 입장(신규 세션) */
-	String entriesPerMinute() {
-		return "sum(increase(tetra_sessions_total{%s,result=\"created\"}[1m]))".formatted(sel);
+	/** 발급 결과 누적 — result = success · sold_out */
+	String claimsByPod() {
+		return "sum by (pod, result) (tetra_claims_total{%s,replay=\"false\"})".formatted(sel);
 	}
 
-	/** 분당 발급 결과 — result = success · sold_out */
-	String claimsPerMinute() {
-		return "sum by (result) (increase(tetra_claims_total{%s,replay=\"false\"}[1m]))".formatted(sel);
-	}
-
-	private static long rangeSeconds(Duration range) {
-		return Math.min(MAX_RANGE_SECONDS, Math.max(MIN_RANGE_SECONDS, range.toSeconds()));
+	/** 입장(신규 세션) 누적 */
+	String entriesByPod() {
+		return "sum by (pod) (tetra_sessions_total{%s,result=\"created\"})".formatted(sel);
 	}
 
 }

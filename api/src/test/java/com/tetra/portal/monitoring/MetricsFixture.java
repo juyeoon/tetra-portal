@@ -4,7 +4,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 시험용 {@link Metrics}. 기본은 정상 진행 중(Redis up, 요청 있음, 5xx 0, p95 0.1초, 격자 없음). */
+/** 시험용 {@link Metrics}. 기본은 정상 진행 중(Redis up, 요청 있음, 5xx 0, p95 0.1초, 칸 없음). */
 final class MetricsFixture {
 
 	Instant at = Instant.parse("2026-10-27T06:10:00Z");
@@ -17,7 +17,7 @@ final class MetricsFixture {
 
 	Double redisUp = 1.0;
 
-	Double soldOutTotal = 0.0;
+	Long soldOutTotal = 0L;
 
 	Double processedLastMinute = 600.0;
 
@@ -35,18 +35,18 @@ final class MetricsFixture {
 
 	List<Long> grid = new ArrayList<>();
 
-	List<Double> entries = new ArrayList<>();
+	List<Long> entries = new ArrayList<>();
 
-	List<Double> success = new ArrayList<>();
+	List<Long> success = new ArrayList<>();
 
-	List<Double> soldOut = new ArrayList<>();
+	List<Long> soldOut = new ArrayList<>();
 
 	List<Double> stock = new ArrayList<>();
 
 	List<Double> sessions = new ArrayList<>();
 
-	/** 격자에 한 분 더한다 */
-	MetricsFixture minute(Instant t, Double entries, Double success, Double soldOut, Double stock, Double sessions) {
+	/** 1분 칸 하나(t = 구간 시작). 카운터는 그 칸의 증가분, 게이지는 그 분 값 */
+	MetricsFixture minute(Instant t, Long entries, Long success, Long soldOut, Double stock, Double sessions) {
 		grid.add(t.toEpochMilli());
 		this.entries.add(entries);
 		this.success.add(success);

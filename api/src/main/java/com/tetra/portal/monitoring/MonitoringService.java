@@ -36,8 +36,9 @@ import com.tetra.portal.tenancy.TenantRouter;
 /**
  * UI-TP-11 모니터링. DB(소유 확인 · 시각 · 재고 · 플랜)는 요청마다 읽고, Prometheus 결과({@link Metrics})만 이벤트별로 캐시한다
  * (키 = tenant + eventId + 입장 시각, TTL 15초 + single-flight, ECS 태스크마다 따로).
- * 상태 · 남은 시간 · 진행 단계는 요청마다 현재 시각으로 계산 — 캐시 안에서 입장 · 시작 · 종료 시각을 넘어도 바로 바뀐다.
- * Prometheus는 입장 ~ 종료 상태에서만 읽는다. 실패 규칙은 Console과 같다(서버 문제 → 마지막 값 + stale, 쿼리 하나 → 그 값만 null).
+ * 상태 · 남은 시간 · 진행 단계는 요청마다 현재 시각으로 계산 — 캐시 안에서 입장 · 시작 · 종료(end_at) 시각을 넘어도 바로 바뀐다.
+ * Prometheus는 입장 ~ 종료(end_at) 상태에서만 읽는다 — 종료 뒤에는 DB만(진행 단계 · 품절 시각). 실패 규칙은 Console과 같다
+ * (서버 문제 → 마지막 값 + stale, 쿼리 하나 → 그 값만 null).
  */
 @Service
 public class MonitoringService {
@@ -106,7 +107,7 @@ public class MonitoringService {
 	}
 
 	static MonitoringPhase phaseOf(EventView e, LocalDateTime now) {
-		return MonitoringPhase.of(e.startAt(), e.hostingEndAt(), e.eventStatus(), e.hostingStatus(), now);
+		return MonitoringPhase.of(e.startAt(), e.endAt(), e.eventStatus(), e.hostingStatus(), now);
 	}
 
 	/** 응답 조립. fetched = 이번에 쓴 Prometheus 결과(조회하지 않는 상태면 null) */
@@ -119,12 +120,13 @@ public class MonitoringService {
 		boolean queried = phase.queriesPrometheus();
 		boolean stale = queried && fetched != null && fetched.stale();
 
-		Instant soldOutAt = phase == MonitoringPhase.SOLD_OUT
-				? MonitoringRules.soldOutAt(m.grid(), m.stock(), remaining, m.at()) : null;
+		// 품절 시각: 진행 중에는 남은 재고 추이(Prometheus), 종료 뒤에는 발급 이력(결과 준비 뒤)
+		OffsetDateTime soldOutAt = phase == MonitoringPhase.SOLD_OUT ? offset(MonitoringRules.soldOutAt(m.grid(), m.stock()))
+				: phase == MonitoringPhase.ENDED ? Kst.toOffset(detail.soldOutAt()) : null;
 		// 열리지 않은 이벤트(배포 · 호스팅 시작 실패)는 빈 상태만 — 남은 시간 · 진행 단계 없음
 		boolean unavailable = phase == MonitoringPhase.UNAVAILABLE;
 		Header header = new Header(phase == MonitoringPhase.ENDED || unavailable ? null
-				: Math.max(0, Duration.between(now, e.hostingEndAt()).toSeconds()), offset(soldOutAt),
+				: Math.max(0, Duration.between(now, e.endAt()).toSeconds()), soldOutAt,
 				queried ? MonitoringRules.service(m, stale) : null);
 		return new EventMonitoring(e.eventId(), e.name(), phase,
 				e.eventStatus() == EventStatus.OPEN_FAILED && phase != MonitoringPhase.ENDED && !unavailable, stale,
@@ -146,8 +148,8 @@ public class MonitoringService {
 		Long issued = remaining == null ? null : Math.max(0, Math.min(stock, stock - remaining));
 		// 시작 전에는 커서가 움직이지 않아 번호표 수가 그대로 대기로 보인다 → 0(명세 3절)
 		Long waiting = phase == MonitoringPhase.ENTRY_OPEN ? Long.valueOf(0) : MonitoringRules.count(m.waiting());
-		MonitoringRules.PeakAt peak = MonitoringRules.peak(m.grid(), m.sessions(), m.sessionsActive(), m.at());
-		return new Kpi(issued, stock, MonitoringRules.count(m.soldOutTotal()), waiting,
+		MonitoringRules.PeakAt peak = MonitoringRules.peak(m.grid(), m.sessions());
+		return new Kpi(issued, stock, m.soldOutTotal(), waiting,
 				MonitoringRules.waitMinutes(phase, waiting, m.processedLastMinute()),
 				MonitoringRules.count(m.sessionsActive()), detail.planCapacity(), e.planCode(),
 				peak == null ? null : new Peak(peak.value(), offset(peak.at())));
@@ -161,8 +163,7 @@ public class MonitoringService {
 		List<StockPoint> stock = new ArrayList<>(m.grid().size());
 		for (int i = 0; i < m.grid().size(); i++) {
 			var t = offset(Instant.ofEpochMilli(m.grid().get(i)));
-			perMinute.add(new MinutePoint(t, MonitoringRules.count(m.entries().get(i)),
-					MonitoringRules.count(m.success().get(i)), MonitoringRules.count(m.soldOut().get(i))));
+			perMinute.add(new MinutePoint(t, m.entries().get(i), m.success().get(i), m.soldOut().get(i)));
 			stock.add(new StockPoint(t, MonitoringRules.count(m.stock().get(i))));
 		}
 		Instant projection = MonitoringRules.projection(phase, e.startAt().atZone(Kst.ZONE).toInstant(), m.at(),
@@ -171,7 +172,7 @@ public class MonitoringService {
 	}
 
 	/**
-	 * 드롭다운(명세 5절): 승인된 이벤트 중 진행 중(입장 ~ 종료) → 오늘 시작 예정 → 최근 7일 종료. 내일 이후 예정과
+	 * 드롭다운(명세 5절): 승인된 이벤트 중 진행 중(입장 ~ 종료 end_at) → 오늘 시작 예정 → 최근 7일 종료(end_at 기준). 내일 이후 예정과
 	 * 열리지 않은 이벤트(배포 · 호스팅 시작 실패, UNAVAILABLE)는 넣지 않는다.
 	 * 기본 선택: 시작한 이벤트 → 입장 중 → 가장 가까운 예정 → 가장 최근 종료.
 	 */
@@ -189,7 +190,7 @@ public class MonitoringService {
 					}
 				}
 				case ENDED -> {
-					if (!e.hostingEndAt().isBefore(now.minus(RECENT_ENDED))) {
+					if (!e.endAt().isBefore(now.minus(RECENT_ENDED))) {
 						ended.add(item(e, Group.ENDED, phase));
 					}
 				}
@@ -198,7 +199,7 @@ public class MonitoringService {
 				}
 			}
 		}
-		ended.sort(Comparator.comparing(EventItem::hostingEndAt).reversed().thenComparing(EventItem::eventId));
+		ended.sort(Comparator.comparing(EventItem::endAt).reversed().thenComparing(EventItem::eventId));
 		List<EventItem> all = new ArrayList<>(live);
 		all.addAll(today);
 		all.addAll(ended);
@@ -215,8 +216,7 @@ public class MonitoringService {
 
 	private static EventItem item(EventView e, Group group, MonitoringPhase phase) {
 		return new EventItem(e.eventId(), e.name(), group, phase, e.eventStatus() == EventStatus.OPEN_FAILED,
-				Kst.toOffset(MonitoringPhase.entryAt(e.startAt())), Kst.toOffset(e.startAt()),
-				Kst.toOffset(e.hostingEndAt()));
+				Kst.toOffset(MonitoringPhase.entryAt(e.startAt())), Kst.toOffset(e.startAt()), Kst.toOffset(e.endAt()));
 	}
 
 	private static OffsetDateTime offset(Instant at) {

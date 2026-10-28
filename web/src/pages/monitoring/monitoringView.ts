@@ -107,7 +107,7 @@ export interface Headline {
   delayed?: boolean;
 }
 
-/** 윗줄 왼쪽: 입장까지 · 시작까지 · 종료까지 · 종료 */
+/** 윗줄 왼쪽: 입장까지 · 시작까지 · 종료까지 · 종료 — 종료는 이벤트 종료(end_at, 발급 마감) */
 export function headlineOf(m: EventMonitoring, nowMs: number): Headline {
   const until = (iso: string) => durationText((msOf(iso) - nowMs) / 1000);
   const p = m.period;
@@ -121,9 +121,9 @@ export function headlineOf(m: EventMonitoring, nowMs: number): Headline {
       return { label: '시작까지', value: until(p.startAt), note: `${clockOf(p.startAt, nowMs)} 시작` };
     case 'LIVE':
     case 'SOLD_OUT':
-      return { label: '종료까지', value: until(p.hostingEndAt) };
+      return { label: '종료까지', value: until(p.endAt) };
     case 'ENDED':
-      return { label: '종료', value: clockOf(p.hostingEndAt, nowMs) };
+      return { label: '종료', value: clockOf(p.endAt, nowMs) };
     case 'UNAVAILABLE':
       // 화면은 진행 단계 카드 대신 빈 상태만 그린다
       return { label: '모니터링 불가', value: EMPTY };
@@ -142,38 +142,51 @@ export const STEP_TITLE: Record<MonitoringStepKey, string> = {
   HOSTING_START: '호스팅 시작',
   ENTRY: '입장',
   LIVE: '이벤트 진행',
-  END: '종료',
+  END: '이벤트 종료',
   AGGREGATE: '결과 집계',
 };
 
+/** 둘 중 늦은 시각 — 입장은 OPEN(준비)이 입장 시각보다 먼저여도 고객 입장은 입장 시각부터 */
+const laterOf = (a: string | null, b: string | null) => (a == null ? b : b == null || msOf(a) > msOf(b) ? a : b);
+
 /**
- * 단계 아래 문구. 완료는 실제 기록(api): 완료 시각은 실제 시각(없으면 예정 시각), 입장 중이면 열린 시각부터 '진행 중'.
- * 실패는 입장만('입장 지연'), 열리지 않은 채 끝난 이벤트의 뒤 단계는 '진행 안 됨'.
- * 예정 시각이 지났는데 아직이면 호스팅 시작 · 입장은 '확인 중', 종료는 '종료 처리 중'(WF4가 끝날 때까지).
- * 품절이면 진행 단계에 품절 시각, 결과 집계는 종료 뒤 · 집계 중 · 완료.
+ * 단계 아래 문구. 끝남 'HH:mm 완료', 진행 중 'HH:mm 시작 · 진행 중', 아직 'HH:mm 예정'(api가 정한 상태대로 — 기다리는 구간은 예정).
+ * 호스팅 시작 완료 시각은 실제 시각(없으면 예정 시각), 입장은 입장 시각과 실제(OPEN) 시각 중 늦은 쪽.
+ * 이벤트 진행: 품절이면 'HH:mm 시작 · HH:mm 품절', 끝나면 'HH:mm 시작 · HH:mm 종료'(end_at).
+ * 결과 집계: 'HH:mm 이후 집계'(hosting_end_at) → '집계 중' → '완료', END_FAILED면 '집계 지연'.
+ * 실패한 입장은 '입장 지연', 열리지 않은 채 끝난 이벤트의 뒤 단계는 '진행 안 됨', 예정 시각이 지났는데 아직이면 '확인 중'.
  */
 export function stepCaption(step: MonitoringStep, m: EventMonitoring, nowMs: number) {
   if (step.status === 'SKIPPED') return '진행 안 됨';
-  if (step.step === 'AGGREGATE') {
-    return step.status === 'DONE' ? '완료' : step.status === 'CURRENT' ? '집계 중' : '종료 뒤';
-  }
-  if (step.status === 'FAILED') return '입장 지연';
-  if (step.delayed) return step.step === 'END' ? '종료 처리 중' : '확인 중';
+  if (step.status === 'FAILED') return step.step === 'AGGREGATE' ? '집계 지연' : '입장 지연';
   const t = clockOf(step.at, nowMs);
-  const actual = clockOf(step.actualAt ?? step.at, nowMs);
-  if (step.step === 'HOSTING_START') return step.status === 'DONE' ? `${actual} 완료` : `${t} 예정`;
-  if (step.step === 'ENTRY') {
-    if (step.status === 'DONE') return `${actual} 완료`;
-    // 지연이 아닌데 입장 시각이 지났으면 열린 것(OPEN). 시각 전에 먼저 열려도(실제 시각 있음) 진행 중
-    const opened = step.actualAt != null || (step.at != null && nowMs >= msOf(step.at));
-    return step.status === 'CURRENT' && opened ? `${actual} 시작 · 진행 중` : `${t} 예정`;
+  if (step.step === 'AGGREGATE') {
+    return step.status === 'DONE' ? '완료' : step.status === 'CURRENT' ? '집계 중' : `${t} 이후 집계`;
   }
-  if (step.step === 'END') return step.status === 'DONE' ? `${t} 완료` : `${t} 예정`;
-  if (step.step === 'LIVE' && m.state === 'SOLD_OUT' && m.header.soldOutAt) {
-    return `${t} 시작 · ${clockOf(m.header.soldOutAt, nowMs)} 품절`;
+  if (step.delayed) return '확인 중';
+  switch (step.step) {
+    case 'HOSTING_START':
+      return step.status === 'DONE' ? `${clockOf(step.actualAt ?? step.at, nowMs)} 완료` : `${t} 예정`;
+    case 'ENTRY': {
+      const opened = clockOf(laterOf(step.actualAt, step.at), nowMs);
+      return step.status === 'DONE' ? `${opened} 완료` : step.status === 'CURRENT' ? `${opened} 시작 · 진행 중` : `${t} 예정`;
+    }
+    case 'LIVE': {
+      const soldOut = (m.state === 'SOLD_OUT' || m.state === 'ENDED') && m.header.soldOutAt ? ` · ${clockOf(m.header.soldOutAt, nowMs)} 품절` : null;
+      if (step.status === 'DONE') return `${t} 시작${soldOut ?? ` · ${clockOf(m.period.endAt, nowMs)} 종료`}`;
+      return step.status === 'CURRENT' ? `${t} 시작${soldOut ?? ' · 진행 중'}` : `${t} 예정`;
+    }
+    case 'END':
+      return step.status === 'DONE' ? `${t} 완료` : `${t} 예정`;
   }
-  return step.status === 'DONE' ? `${t} 완료` : step.status === 'CURRENT' ? `${t} 시작 · 진행 중` : `${t} 예정`;
 }
+
+/**
+ * 주기 호출을 멈출 응답 — 종료 뒤 결과 집계가 끝났을 때(완료 · 실패 · 진행 안 됨).
+ * 그 전까지는 종료여도 15초마다 다시 불러 진행 단계(결과 집계)를 갱신한다(서버는 Prometheus를 읽지 않는다).
+ */
+export const pollingDone = (m: EventMonitoring) =>
+  m.state === 'ENDED' && m.steps.some((s) => s.step === 'AGGREGATE' && s.status !== 'UPCOMING' && s.status !== 'CURRENT');
 
 /* ---------- 칩 · 갱신 문구 ---------- */
 
@@ -217,7 +230,7 @@ export function itemCaption(item: MonitoringEventItem, nowMs: number) {
     const sameDay = item.startAt.slice(0, 10) === kstIso(nowMs).slice(0, 10);
     return `${sameDay ? `오늘 ${item.startAt.slice(11, 16)}` : clockOf(item.startAt, nowMs)} 시작`;
   }
-  return `종료 ${item.hostingEndAt.slice(5, 10)}`;
+  return `종료 ${item.endAt.slice(5, 10)}`;
 }
 
 /**
@@ -241,7 +254,7 @@ export function detailCaption(m: EventMonitoring, nowMs: number) {
   const group = m.state === 'ENDED' ? 'ENDED' : m.state === 'BEFORE_ENTRY' ? 'TODAY' : 'LIVE';
   const p = m.period;
   return itemCaption(
-    { eventId: m.eventId, name: m.name, group, state: m.state, prepareFailed: m.prepareFailed, entryAt: p.entryAt, startAt: p.startAt, hostingEndAt: p.hostingEndAt },
+    { eventId: m.eventId, name: m.name, group, state: m.state, prepareFailed: m.prepareFailed, entryAt: p.entryAt, startAt: p.startAt, endAt: p.endAt },
     nowMs,
   );
 }
@@ -263,15 +276,15 @@ export function selectOptions(events: MonitoringEventItem[], selected: number | 
 }
 
 /**
- * 경계 시각(입장 · 시작 · 종료)을 넘었으면 다시 부를 경계 키. 경계 하나당 한 번만(fired에 넣는다) —
+ * 경계 시각(입장 · 시작 · 종료 end_at)을 넘었으면 다시 부를 경계 키. 경계 하나당 한 번만(fired에 넣는다) —
  * 다시 불러도 서버 시각이 아직 경계 전이면 상태가 그대로라 또 부르지 않고 15초 주기로 돌아간다.
  * 마지막 응답의 serverTime이 이미 지난 경계는 해당 없음(그 응답이 이미 반영).
  */
 export function boundaryToRefetch(m: EventMonitoring, nowMs: number, fired: ReadonlySet<string>): string | null {
-  // 열리지 않은 이벤트는 시각으로 상태가 바뀌지 않는다(15초 주기로 회복만 확인)
+  // 종료 뒤 결과 집계(hosting_end_at)는 15초 주기로 · 열리지 않은 이벤트는 시각으로 상태가 바뀌지 않는다(회복만 확인)
   if (m.state === 'ENDED' || m.state === 'UNAVAILABLE') return null;
   const server = msOf(m.serverTime);
-  for (const at of [m.period.entryAt, m.period.startAt, m.period.hostingEndAt]) {
+  for (const at of [m.period.entryAt, m.period.startAt, m.period.endAt]) {
     const key = `${m.eventId}@${at}`;
     if (server < msOf(at) && msOf(at) <= nowMs && !fired.has(key)) return key;
   }
@@ -280,9 +293,15 @@ export function boundaryToRefetch(m: EventMonitoring, nowMs: number, fired: Read
 
 /* ---------- 그래프 ---------- */
 
-/** 분당 입장 · 발급 결과 부제: '최근 1분: 입장 612명 · 발급 성공 630건' (품절 뒤 '· 품절 N건') */
-export function perMinuteSubtitle(series: MonitoringSeries, state: MonitoringPhase) {
-  const last = series.perMinute[series.perMinute.length - 1];
+const MINUTE = 60_000;
+
+/**
+ * 분당 입장 · 발급 결과 부제: '최근 1분: 입장 612명 · 발급 성공 630건' (품절 뒤 '· 품절 N건').
+ * 최근 1분 = 다 찬 마지막 칸 — 마지막 칸은 지금 분이라 아직 차는 중(asOf = 조회 시각). 다 찬 칸이 없으면 마지막 칸
+ */
+export function perMinuteSubtitle(series: MonitoringSeries, state: MonitoringPhase, asOf: string) {
+  const full = series.perMinute.filter((p) => msOf(p.t) + MINUTE <= msOf(asOf));
+  const last = full[full.length - 1] ?? series.perMinute[series.perMinute.length - 1];
   if (!last) return null;
   const soldOut = state === 'SOLD_OUT' ? ` · 품절 ${countText(last.soldOut, '건')}` : '';
   return `최근 1분: 입장 ${countText(last.entries, '명')} · 발급 성공 ${countText(last.success, '건')}${soldOut}`;
@@ -293,58 +312,73 @@ export function tickMinutes(points: number) {
   return [5, 10, 15, 30, 60, 120, 180].find((step) => points / step <= 8) ?? 360;
 }
 
-/** 이 시각에 가로축 글자를 붙이는지 — 정각 간격의 배수 분(한국 시각) */
-export const isTick = (iso: string, step: number) => Math.floor((msOf(iso) + 9 * 3_600_000) / 60_000) % step === 0;
+/** 이 칸(ms)에 가로축 글자를 붙이는지 — 정각 간격의 배수 분(한국 시각) */
+export const isTick = (ms: number, step: number) => Math.floor((ms + 9 * 3_600_000) / MINUTE) % step === 0;
 
-/** from ~ to 사이 정각 간격(분, 한국 시각) 눈금 — 데이터가 없는 구간(소진 예상 점선)에도 눈금을 둔다 */
-export function timeTicks(fromMs: number, toMs: number, step: number) {
-  const unit = step * 60_000;
-  const offset = 9 * 3_600_000;
-  const ticks: number[] = [];
-  for (let t = Math.ceil((fromMs + offset) / unit) * unit - offset; t <= toMs; t += unit) ticks.push(t);
-  return ticks;
+/** 두 그래프(분당 · 남은 재고)가 같이 쓰는 가로축 — 같은 1분 칸이라 가로 범위 · 눈금 · 기준선 위치가 맞는다 */
+export interface ChartAxis {
+  /** 1분 칸 시작 시각(ms). 입장 칸 ~ 지금 칸, 소진 예상 점선이 있으면 그 분까지 늘린다 */
+  minutes: number[];
+  /** 가로축 글자 간격(분) */
+  tick: number;
+  /** 소진 예상 칸(점선 끝) — 그리지 않으면 null */
+  projectionIndex: number | null;
 }
 
-/** 분 단위 격자에서 이 시각(분으로 내림)의 칸 — 기준선(입장 · 시작) 위치. 범위 밖이면 null */
-export function minuteSlot(perMinute: MonitoringSeries['perMinute'], iso: string) {
-  const minute = Math.floor(msOf(iso) / 60_000);
-  return perMinute.find((b) => Math.floor(msOf(b.t) / 60_000) === minute)?.t ?? null;
+/** 소진 예상은 진행 중이고 이벤트 종료(end_at) 전에 소진될 때만, 지금 칸보다 뒤면 그린다 — 종료 뒤 예상까지 늘리면 막대가 눌린다 */
+export function chartAxis(series: MonitoringSeries, state: MonitoringPhase, endAt: string): ChartAxis {
+  const minutes = series.perMinute.map((p) => msOf(p.t));
+  const last = minutes[minutes.length - 1];
+  let projectionIndex: number | null = null;
+  if (state === 'LIVE' && series.projection && last != null && msOf(series.projection.at) <= msOf(endAt)) {
+    const end = Math.floor(msOf(series.projection.at) / MINUTE) * MINUTE;
+    for (let t = last + MINUTE; t <= end; t += MINUTE) minutes.push(t);
+    if (end > last) projectionIndex = minutes.length - 1;
+  }
+  return { minutes, tick: tickMinutes(minutes.length), projectionIndex };
+}
+
+/** 칸 값을 가로축 길이로 — 소진 예상까지 늘린 칸은 null */
+export const onAxis = <T>(values: (T | null)[], axis: ChartAxis): (T | null)[] => axis.minutes.map((_, i) => values[i] ?? null);
+
+/** 이 시각이 든 칸(ms) — 기준선(입장 · 시작) 위치. 범위 밖이면 null */
+export function minuteSlot(axis: ChartAxis, iso: string) {
+  const minute = Math.floor(msOf(iso) / MINUTE) * MINUTE;
+  return axis.minutes.includes(minute) ? minute : null;
 }
 
 export interface StockChartData {
-  /** 시각(ms). 소진 예상이 있으면 마지막에 예상 시각 */
-  x: number[];
+  /** 칸마다 남은 재고(계단). 소진 예상까지 늘린 칸은 null */
   remaining: (number | null)[];
-  /** 마지막 실제 값 → 예상 시각 0 (점선). 예상이 없으면 모두 null */
+  /** 마지막 실제 값 → 예상 칸 0 (점선). 예상이 없으면 모두 null */
   projection: (number | null)[];
-  /** 품절 지점(값 0) 한 칸만 */
+  /** 품절 칸(값 0) 한 칸만 */
   soldOut: (number | null)[];
   hasProjection: boolean;
+  /** 마지막 실제 값의 칸(ms) — '지금' 기준선. 값이 없으면 null */
+  lastActual: number | null;
 }
 
-/** 남은 재고 그래프. 진행 중이면 소진 예상 점선, 품절이면 예상 대신 품절 지점 */
-export function stockChart(series: MonitoringSeries, state: MonitoringPhase, soldOutAt: string | null): StockChartData {
-  const x = series.stock.map((p) => msOf(p.t));
-  const remaining = series.stock.map((p) => p.remaining);
+/** 남은 재고 그래프. 진행 중이면 소진 예상 점선, 품절이면 예상 대신 품절 칸 */
+export function stockChart(series: MonitoringSeries, state: MonitoringPhase, soldOutAt: string | null, axis: ChartAxis): StockChartData {
+  const remaining = onAxis(
+    series.stock.map((p) => p.remaining),
+    axis,
+  );
   const projection: (number | null)[] = remaining.map(() => null);
   const soldOut: (number | null)[] = remaining.map(() => null);
   let lastIndex = -1;
-  remaining.forEach((v, i) => {
-    if (v != null) lastIndex = i;
+  series.stock.forEach((p, i) => {
+    if (p.remaining != null) lastIndex = i;
   });
-  const hasProjection = state === 'LIVE' && series.projection != null && lastIndex >= 0;
+  const hasProjection = axis.projectionIndex != null && lastIndex >= 0;
   if (hasProjection) {
     projection[lastIndex] = remaining[lastIndex];
-    x.push(msOf(series.projection!.at));
-    remaining.push(null);
-    projection.push(0);
-    soldOut.push(null);
+    projection[axis.projectionIndex!] = 0;
   }
-  if (state === 'SOLD_OUT' && soldOutAt) {
-    const i = x.findIndex((t) => t >= msOf(soldOutAt));
-    if (i >= 0) soldOut[i] = 0;
-  }
-  return { x, remaining, projection, soldOut, hasProjection };
+  const soldOutSlot = state === 'SOLD_OUT' && soldOutAt ? minuteSlot(axis, soldOutAt) : null;
+  if (soldOutSlot != null) soldOut[axis.minutes.indexOf(soldOutSlot)] = 0;
+  return { remaining, projection, soldOut, hasProjection, lastActual: lastIndex >= 0 ? axis.minutes[lastIndex] : null };
 }
 
 /** 남은 재고 부제: '지금 5,460개 · 최근 5분 속도면 15:21쯤 소진' / 품절 'HH:mm 품절' */

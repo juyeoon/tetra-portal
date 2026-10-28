@@ -17,12 +17,16 @@ import com.tetra.portal.domain.platform.TrafficPlan;
 import com.tetra.portal.domain.platform.TrafficPlanRepository;
 import com.tetra.portal.domain.tenant.Event;
 import com.tetra.portal.domain.tenant.EventRepository;
+import com.tetra.portal.domain.tenant.EventResultSummary;
 import com.tetra.portal.domain.tenant.EventResultSummaryRepository;
 import com.tetra.portal.domain.tenant.EventStatusLog;
 import com.tetra.portal.domain.tenant.EventStatusLogRepository;
 import com.tetra.portal.event.EventDomain;
 import com.tetra.portal.result.ResultReader;
 import com.tetra.portal.result.ResultResponse;
+import com.tetra.portal.tenancy.TenantContext;
+
+import jakarta.persistence.EntityManager;
 
 /**
  * 모니터링 DB 읽기 — TenantRouter.inTenant 안에서만. 승인된(호스팅 대상) 이벤트만 모니터링 대상이다.
@@ -38,11 +42,12 @@ class MonitoringReader {
 	}
 
 	/**
-	 * 상세에만 필요한 값. planCapacity = traffic_plan.max_capacity(결과 탭과 같은 출처).
-	 * hostingStartedAt · openedAt = 실제 전이 시각(event_status_log의 첫 HOSTING → HOSTING · EVENT → OPEN, 없으면 null)
+	 * 상세에만 필요한 값. planCapacity = traffic_plan.max_capacity(결과 탭과 같은 출처). resultState = 결과 탭 판정(READY · END_FAILED …).
+	 * hostingStartedAt · openedAt = 실제 전이 시각(event_status_log의 첫 HOSTING → HOSTING · EVENT → OPEN, 없으면 null).
+	 * soldOutAt = 종료 뒤 품절 시각(분) — 결과가 준비되고 재고를 다 발급했으면 마지막 발급 성공 분(발급 이력), 그 밖 null
 	 */
-	record EventDetail(EventView event, Long planCapacity, boolean resultReady, String domain,
-			LocalDateTime hostingStartedAt, LocalDateTime openedAt) {
+	record EventDetail(EventView event, Long planCapacity, ResultResponse.State resultState, String domain,
+			LocalDateTime hostingStartedAt, LocalDateTime openedAt, LocalDateTime soldOutAt) {
 	}
 
 	private final EventRepository events;
@@ -55,13 +60,16 @@ class MonitoringReader {
 
 	private final EventDomain domains;
 
+	private final EntityManager entityManager;
+
 	MonitoringReader(EventRepository events, EventResultSummaryRepository summaries, TrafficPlanRepository plans,
-			EventStatusLogRepository statusLogs, EventDomain domains) {
+			EventStatusLogRepository statusLogs, EventDomain domains, EntityManager entityManager) {
 		this.events = events;
 		this.summaries = summaries;
 		this.plans = plans;
 		this.statusLogs = statusLogs;
 		this.domains = domains;
+		this.entityManager = entityManager;
 	}
 
 	@Transactional(readOnly = true)
@@ -75,11 +83,31 @@ class MonitoringReader {
 			.filter(ev -> ev.getApplicationStatus() == ApplicationStatus.APPROVED)
 			.orElseThrow(() -> new ApiException(ErrorCode.EVENT_NOT_FOUND));
 		Long capacity = plans.findById(e.getTrafficPlanCode()).map(TrafficPlan::getMaxCapacity).orElse(null);
-		boolean resultReady = ResultReader.state(e,
-				summaries.findById(eventId).orElse(null)) == ResultResponse.State.READY;
+		EventResultSummary summary = summaries.findById(eventId).orElse(null);
+		ResultResponse.State resultState = ResultReader.state(e, summary);
 		List<EventStatusLog> logs = statusLogs.findByEventIdOrderByChangedAtAscLogIdAsc(eventId);
-		return new EventDetail(view(e), capacity, resultReady, domains.of(e),
-				firstAt(logs, StatusType.HOSTING, HostingStatus.HOSTING), firstAt(logs, StatusType.EVENT, EventStatus.OPEN));
+		return new EventDetail(view(e), capacity, resultState, domains.of(e),
+				firstAt(logs, StatusType.HOSTING, HostingStatus.HOSTING), firstAt(logs, StatusType.EVENT, EventStatus.OPEN),
+				resultState == ResultResponse.State.READY ? soldOutAt(e, summary) : null);
+	}
+
+	/**
+	 * 재고를 다 발급했으면(성공 수 ≥ 총 재고 — 결과 탭과 같은 event.stock_count) 마지막 발급 성공 분. 종료 뒤에는 Prometheus를 읽지 않아
+	 * 발급 이력으로 정한다 — 결과가 준비된 뒤에만(발급 이력 저장 API) 있다. 다른 테넌트 행은 tenant_id로 거른다(엔티티를 거치지 않는 읽기).
+	 */
+	private LocalDateTime soldOutAt(Event e, EventResultSummary summary) {
+		Long stock = e.getStockCount();
+		if (summary.getSuccessCount() == null || stock == null || stock <= 0 || summary.getSuccessCount() < stock) {
+			return null;
+		}
+		Object minute = entityManager.createNativeQuery("""
+				select date_format(max(issued_at), '%Y-%m-%d %H:%i:00')
+				  from issuance_history
+				 where event_id = :eventId and tenant_id = :tenantId and result = 'SUCCESS'""")
+			.setParameter("eventId", e.getEventId())
+			.setParameter("tenantId", TenantContext.current())
+			.getSingleResult();
+		return minute == null ? null : LocalDateTime.parse(minute.toString().replace(' ', 'T'));
 	}
 
 	/** 로그는 시각 순서 — 처음 그 상태가 된 시각 */

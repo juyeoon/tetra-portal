@@ -19,14 +19,17 @@ const segment = (reached: boolean) =>
 function Dot({ status }: { status: MonitoringStepStatus }) {
   const base = { width: 12, height: 12, borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box' as const };
   if (status === 'DONE') return <Box sx={{ ...base, bgcolor: color.navy }} />;
-  // 실패(입장)는 주황 — 빨강은 쓰지 않는다. 진행 안 됨은 점선 테두리
+  // 실패(입장 · 결과 집계)는 주황 — 빨강은 쓰지 않는다. 진행 안 됨은 점선 테두리
   if (status === 'FAILED') return <Box sx={{ ...base, bgcolor: tones.amber.dot }} />;
   if (status === 'SKIPPED') return <Box sx={{ ...base, bgcolor: color.white, border: `2px dashed ${line.strong}` }} />;
   if (status === 'CURRENT') return <Box sx={{ ...base, width: 14, height: 14, bgcolor: color.white, border: `2.5px solid ${color.navy}` }} />;
   return <Box sx={{ ...base, bgcolor: color.white, border: `2px solid ${line.strong}` }} />;
 }
 
-/** 진행 단계(회색 카드) — 윗줄: 남은 시간 · 품절 시각 · 서비스 · 갱신 문구 / 아랫줄: 5단계 */
+/**
+ * 진행 단계(회색 카드) — 윗줄: 남은 시간 · 품절 시각 · 서비스 · 갱신 문구 / 아랫줄: 5단계.
+ * 끝남 = 채운 점 + 실선, 진행 중(지금 실제로 진행 중인 단계만) = 빈 점 + 굵게, 아직 = 회색 점 + 점선
+ */
 export default function ProgressCard({ m, nowMs, delayed }: ProgressCardProps) {
   const headline = headlineOf(m, nowMs);
   const soldOut = soldOutNote(m, nowMs);
