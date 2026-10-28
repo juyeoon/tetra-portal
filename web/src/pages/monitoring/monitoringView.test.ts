@@ -4,6 +4,7 @@ import type { EventMonitoring, MonitoringEventItem, MonitoringEventList, Monitor
 import {
   EMPTY,
   boundaryToRefetch,
+  chartAxis,
   clockOf,
   countText,
   durationText,
@@ -12,9 +13,13 @@ import {
   headlineOf,
   isTick,
   itemCaption,
+  kstIso,
+  minuteSlot,
+  onAxis,
   periodText,
   perMinuteSubtitle,
   pickEventId,
+  pollingDone,
   refreshStatus,
   rejectChip,
   selectOptions,
@@ -27,14 +32,13 @@ import {
   stockChart,
   stockSubtitle,
   tickMinutes,
-  timeTicks,
   waitText,
 } from './monitoringView.ts';
 
 const ms = (iso: string) => new Date(iso).getTime();
 const NOW = '2026-10-27T15:12:14+09:00';
 
-/** 진행 중 응답(시안 숫자). 입장 14:00 · 시작 15:00 · 종료(hosting_end_at) 15:40 */
+/** 진행 중 응답(시안 숫자). 입장 14:00 · 시작 15:00 · 종료(end_at) 15:40 · 호스팅 종료 15:45 */
 function monitoring(over: Partial<EventMonitoring> = {}): EventMonitoring {
   return {
     eventId: 7,
@@ -49,7 +53,7 @@ function monitoring(over: Partial<EventMonitoring> = {}): EventMonitoring {
       entryAt: '2026-10-27T14:00:00+09:00',
       startAt: '2026-10-27T15:00:00+09:00',
       endAt: '2026-10-27T15:40:00+09:00',
-      hostingEndAt: '2026-10-27T15:40:00+09:00',
+      hostingEndAt: '2026-10-27T15:45:00+09:00',
       domain: 'event-7.tetra.io',
     },
     steps: [],
@@ -163,37 +167,39 @@ describe('진행 단계 카드', () => {
     assert.equal(soldOutNote(monitoring(), ms(NOW)), null);
   });
 
-  test('단계 아래 문구 — 완료 · 시작 · 진행 중 · 예정', () => {
+  test('단계 아래 문구 — 끝남 완료 · 진행 중 · 아직 예정', () => {
     const m = monitoring();
     assert.equal(stepCaption(step('HOSTING_START', 'DONE', m.period.hostingStartAt), m, ms(NOW)), '13:20 완료');
     assert.equal(stepCaption(step('LIVE', 'CURRENT', m.period.startAt), m, ms(NOW)), '15:00 시작 · 진행 중');
-    assert.equal(stepCaption(step('END', 'UPCOMING', m.period.hostingEndAt), m, ms(NOW)), '15:40 예정');
+    assert.equal(stepCaption(step('END', 'UPCOMING', m.period.endAt), m, ms(NOW)), '15:40 예정');
   });
 
-  test('호스팅 시작 전에는 호스팅 시작이 현재 단계여도 문구는 예정', () => {
+  test('기다리는 구간(예정 시각 전)은 회색 예정 — 호스팅 시작 전 · 입장 전', () => {
     const before = monitoring({ state: 'BEFORE_ENTRY' });
-    assert.equal(stepCaption(step('HOSTING_START', 'CURRENT', before.period.hostingStartAt), before, ms('2026-10-27T13:00:00+09:00')), '13:20 예정');
-  });
-
-  test('입장 전에는 입장이 현재 단계여도 문구는 예정', () => {
-    const before = monitoring({ state: 'BEFORE_ENTRY' });
-    assert.equal(stepCaption(step('ENTRY', 'CURRENT', before.period.entryAt), before, ms('2026-10-27T13:28:00+09:00')), '14:00 예정');
+    assert.equal(stepCaption(step('HOSTING_START', 'UPCOMING', before.period.hostingStartAt), before, ms('2026-10-27T13:00:00+09:00')), '13:20 예정');
     assert.equal(stepCaption(step('HOSTING_START', 'DONE', before.period.hostingStartAt), before, ms('2026-10-27T13:28:00+09:00')), '13:20 완료');
-    // 입장 ~ 시작은 그대로 진행 중
-    const open = monitoring({ state: 'ENTRY_OPEN' });
-    assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt), open, ms('2026-10-27T14:42:00+09:00')), '14:00 시작 · 진행 중');
+    assert.equal(stepCaption(step('ENTRY', 'UPCOMING', before.period.entryAt), before, ms('2026-10-27T13:28:00+09:00')), '14:00 예정');
+    // OPEN(준비)이 입장 시각보다 먼저여도 입장 전에는 예정
+    assert.equal(stepCaption(step('ENTRY', 'UPCOMING', before.period.entryAt, { actualAt: '2026-10-27T13:45:00+09:00' }), before, ms('2026-10-27T13:50:00+09:00')), '14:00 예정');
   });
 
-  test('호스팅 시작 · 입장 완료 시각은 실제 시각(없으면 예정 시각)', () => {
+  test('입장 ~ 시작은 입장 진행 중 — 시각은 입장 시각과 OPEN 시각 중 늦은 쪽', () => {
+    const open = monitoring({ state: 'ENTRY_OPEN' });
+    const now = ms('2026-10-27T14:42:00+09:00');
+    assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt), open, now), '14:00 시작 · 진행 중');
+    // 준비(OPEN)가 먼저 — 고객 입장은 입장 시각부터
+    assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt, { actualAt: '2026-10-27T13:45:00+09:00' }), open, now), '14:00 시작 · 진행 중');
+    // OPEN이 늦었으면 그 시각부터
+    assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt, { actualAt: '2026-10-27T14:01:10+09:00' }), open, now), '14:01 시작 · 진행 중');
+    assert.equal(stepCaption(step('ENTRY', 'DONE', open.period.entryAt, { actualAt: '2026-10-27T13:45:00+09:00' }), monitoring(), ms(NOW)), '14:00 완료');
+    assert.equal(stepCaption(step('ENTRY', 'DONE', open.period.entryAt, { actualAt: '2026-10-27T14:01:10+09:00' }), monitoring(), ms(NOW)), '14:01 완료');
+  });
+
+  test('호스팅 시작 완료 시각은 실제 시각(없으면 예정 시각)', () => {
     const open = monitoring({ state: 'ENTRY_OPEN' });
     const now = ms('2026-10-27T14:42:00+09:00');
     assert.equal(stepCaption(step('HOSTING_START', 'DONE', open.period.hostingStartAt, { actualAt: '2026-10-27T13:21:30+09:00' }), open, now), '13:21 완료');
     assert.equal(stepCaption(step('HOSTING_START', 'DONE', open.period.hostingStartAt), open, now), '13:20 완료');
-    assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt, { actualAt: '2026-10-27T14:01:10+09:00' }), open, now), '14:01 시작 · 진행 중');
-    assert.equal(stepCaption(step('ENTRY', 'DONE', open.period.entryAt, { actualAt: '2026-10-27T14:01:10+09:00' }), monitoring(), ms(NOW)), '14:01 완료');
-    // 입장 시각 전에 먼저 열렸으면(실제 시각 있음) 진행 중
-    const before = monitoring({ state: 'BEFORE_ENTRY' });
-    assert.equal(stepCaption(step('ENTRY', 'CURRENT', before.period.entryAt, { actualAt: '2026-10-27T13:55:00+09:00' }), before, ms('2026-10-27T13:58:00+09:00')), '13:55 시작 · 진행 중');
   });
 
   test('예정 시각이 지났는데 아직이면 확인 중', () => {
@@ -212,39 +218,43 @@ describe('진행 단계 카드', () => {
     assert.equal(stepCaption(entry, monitoring({ state: 'ENDED' }), ms('2026-10-27T16:00:00+09:00')), '입장 지연');
   });
 
-  test('정상 이벤트도 종료 시각 뒤 WF4가 끝날 때까지 종료는 종료 처리 중, 끝나면 완료', () => {
+  test('이벤트 진행 — 진행 중 · 품절 시각, 종료 뒤 시작 · 종료(end_at) 또는 품절', () => {
+    const sold = monitoring({ state: 'SOLD_OUT', header: { endsInSec: 1, soldOutAt: '2026-10-27T15:09:00+09:00', service: 'NORMAL' } });
+    assert.equal(stepCaption(step('LIVE', 'CURRENT', sold.period.startAt), sold, ms(NOW)), '15:00 시작 · 15:09 품절');
+    const ended = monitoring({ state: 'ENDED', header: { endsInSec: null, soldOutAt: null, service: null } });
+    const after = ms('2026-10-27T15:42:00+09:00');
+    assert.equal(stepCaption(step('LIVE', 'DONE', ended.period.startAt), ended, after), '15:00 시작 · 15:40 종료');
+    const endedSold = monitoring({ state: 'ENDED', header: { endsInSec: null, soldOutAt: '2026-10-27T15:09:00+09:00', service: null } });
+    assert.equal(stepCaption(step('LIVE', 'DONE', endedSold.period.startAt), endedSold, after), '15:00 시작 · 15:09 품절');
+  });
+
+  test('이벤트 종료는 end_at — 전에는 예정, 지나면 완료(종료 처리 중 없음)', () => {
+    const ended = monitoring({ state: 'ENDED' });
+    assert.equal(stepCaption(step('END', 'UPCOMING', ended.period.endAt), monitoring(), ms(NOW)), '15:40 예정');
+    assert.equal(stepCaption(step('END', 'DONE', ended.period.endAt), ended, ms('2026-10-27T15:42:00+09:00')), '15:40 완료');
+  });
+
+  test('결과 집계 — 호스팅 종료 전 이후 집계 · WF4 · 집계 중 · 완료, 실패는 집계 지연', () => {
     const ended = monitoring({ state: 'ENDED' });
     const now = ms('2026-10-27T15:42:00+09:00');
-    assert.equal(stepCaption(step('END', 'CURRENT', ended.period.hostingEndAt, { delayed: true }), ended, now), '종료 처리 중');
-    assert.equal(stepCaption(step('END', 'DONE', ended.period.hostingEndAt), ended, now), '15:40 완료');
-    // 종료 전 종료 칸은 예정(현재가 되어도 '진행 중'이 아니다)
-    assert.equal(stepCaption(step('END', 'UPCOMING', ended.period.hostingEndAt), monitoring(), ms(NOW)), '15:40 예정');
-    assert.equal(stepCaption(step('END', 'CURRENT', ended.period.hostingEndAt), ended, now), '15:40 예정');
+    assert.equal(stepCaption(step('AGGREGATE', 'UPCOMING', ended.period.hostingEndAt), monitoring(), ms(NOW)), '15:45 이후 집계');
+    assert.equal(stepCaption(step('AGGREGATE', 'UPCOMING', ended.period.hostingEndAt), ended, now), '15:45 이후 집계');
+    assert.equal(stepCaption(step('AGGREGATE', 'CURRENT', ended.period.hostingEndAt), ended, now), '집계 중');
+    assert.equal(stepCaption(step('AGGREGATE', 'DONE', ended.period.hostingEndAt), ended, now), '완료');
+    assert.equal(stepCaption(step('AGGREGATE', 'FAILED', ended.period.hostingEndAt), ended, now), '집계 지연');
   });
 
   test('열리지 않은 채 끝난 이벤트의 진행 · 종료 · 결과 집계는 진행 안 됨(집계 중으로 남지 않는다)', () => {
     const ended = monitoring({ state: 'ENDED' });
     const now = ms('2026-10-27T16:00:00+09:00');
     assert.equal(stepCaption(step('LIVE', 'SKIPPED', ended.period.startAt), ended, now), '진행 안 됨');
-    assert.equal(stepCaption(step('END', 'SKIPPED', ended.period.hostingEndAt), ended, now), '진행 안 됨');
-    assert.equal(stepCaption(step('AGGREGATE', 'SKIPPED', null), ended, now), '진행 안 됨');
-  });
-
-  test('품절이면 진행 단계에 품절 시각', () => {
-    const sold = monitoring({ state: 'SOLD_OUT', header: { endsInSec: 1, soldOutAt: '2026-10-27T15:09:00+09:00', service: 'NORMAL' } });
-    assert.equal(stepCaption(step('LIVE', 'CURRENT', sold.period.startAt), sold, ms(NOW)), '15:00 시작 · 15:09 품절');
-  });
-
-  test('결과 집계 — 종료 뒤 · 집계 중 · 완료', () => {
-    const m = monitoring({ state: 'ENDED' });
-    assert.equal(stepCaption(step('AGGREGATE', 'UPCOMING', null), monitoring(), ms(NOW)), '종료 뒤');
-    assert.equal(stepCaption(step('AGGREGATE', 'CURRENT', null), m, ms(NOW)), '집계 중');
-    assert.equal(stepCaption(step('AGGREGATE', 'DONE', null), m, ms(NOW)), '완료');
+    assert.equal(stepCaption(step('END', 'SKIPPED', ended.period.endAt), ended, now), '진행 안 됨');
+    assert.equal(stepCaption(step('AGGREGATE', 'SKIPPED', ended.period.hostingEndAt), ended, now), '진행 안 됨');
   });
 
   test('다른 날 단계 시각은 날짜를 붙인다', () => {
     const m = monitoring({ state: 'ENDED' });
-    assert.equal(stepCaption(step('END', 'DONE', m.period.hostingEndAt), m, ms('2026-10-28T09:00:00+09:00')), '10-27 15:40 완료');
+    assert.equal(stepCaption(step('END', 'DONE', m.period.endAt), m, ms('2026-10-28T09:00:00+09:00')), '10-27 15:40 완료');
   });
 
   test('카드 · 그래프는 입장 ~ 종료 전만, 준비 실패는 안내만', () => {
@@ -302,7 +312,7 @@ describe('드롭다운', () => {
     prepareFailed: false,
     entryAt: '2026-10-27T14:00:00+09:00',
     startAt: '2026-10-27T15:00:00+09:00',
-    hostingEndAt: '2026-10-27T15:40:00+09:00',
+    endAt: '2026-10-27T15:40:00+09:00',
     ...over,
   });
 
@@ -310,7 +320,7 @@ describe('드롭다운', () => {
     assert.equal(itemCaption(item({}), ms(NOW)), '진행 중');
     assert.equal(itemCaption(item({ state: 'ENTRY_OPEN' }), ms(NOW)), '입장 중');
     assert.equal(itemCaption(item({ group: 'TODAY', state: 'BEFORE_ENTRY', startAt: '2026-10-27T18:00:00+09:00' }), ms(NOW)), '오늘 18:00 시작');
-    assert.equal(itemCaption(item({ group: 'ENDED', state: 'ENDED', hostingEndAt: '2026-10-24T20:00:00+09:00' }), ms(NOW)), '종료 10-24');
+    assert.equal(itemCaption(item({ group: 'ENDED', state: 'ENDED', endAt: '2026-10-24T20:00:00+09:00' }), ms(NOW)), '종료 10-24');
   });
 
   const list: MonitoringEventList = { events: [item({ eventId: 7 }), item({ eventId: 9, group: 'ENDED' })], defaultEventId: 7 };
@@ -343,7 +353,7 @@ describe('드롭다운', () => {
   });
 
   test('목록에서 빠진 지난 이벤트는 현황 상태로 문구', () => {
-    const old = monitoring({ eventId: 30, name: '여름 이벤트', state: 'ENDED', period: { ...monitoring().period, hostingEndAt: '2026-10-10T15:40:00+09:00' } });
+    const old = monitoring({ eventId: 30, name: '여름 이벤트', state: 'ENDED', period: { ...monitoring().period, endAt: '2026-10-10T15:40:00+09:00' } });
     assert.equal(detailCaption(old, ms(NOW)), '종료 10-10');
     assert.equal(detailCaption(monitoring({ state: 'ENTRY_OPEN' }), ms(NOW)), '입장 중');
     assert.equal(detailCaption(unavailable, ms(NOW)), '모니터링 불가');
@@ -369,7 +379,7 @@ describe('경계 시각 즉시 재조회', () => {
     assert.equal(boundaryToRefetch(again, ms('2026-10-27T15:00:09+09:00'), fired), null);
   });
 
-  test('이미 지난 경계(응답이 반영한 시각)는 해당 없고, 다음 경계는 따로 한 번', () => {
+  test('이미 지난 경계(응답이 반영한 시각)는 해당 없고, 다음 경계(종료 = end_at, 호스팅 종료 아님)는 따로 한 번', () => {
     const live = monitoring({ serverTime: '2026-10-27T15:39:55+09:00' });
     const fired = new Set(['7@2026-10-27T15:00:00+09:00']);
     assert.equal(boundaryToRefetch(live, ms('2026-10-27T15:39:58+09:00'), fired), null);
@@ -382,22 +392,49 @@ describe('경계 시각 즉시 재조회', () => {
   });
 });
 
+describe('종료 뒤 갱신', () => {
+  const steps = (aggregate: MonitoringStep['status']): MonitoringStep[] => [
+    step('HOSTING_START', 'DONE', null),
+    step('ENTRY', 'DONE', null),
+    step('LIVE', 'DONE', null),
+    step('END', 'DONE', null),
+    step('AGGREGATE', aggregate, null),
+  ];
+
+  test('종료여도 결과 집계가 끝날 때까지(예정 · 집계 중) 주기 호출을 계속한다', () => {
+    assert.equal(pollingDone(monitoring({ state: 'ENDED', steps: steps('UPCOMING') })), false);
+    assert.equal(pollingDone(monitoring({ state: 'ENDED', steps: steps('CURRENT') })), false);
+  });
+
+  test('집계가 끝나면(완료 · 실패 · 진행 안 됨) 멈춘다', () => {
+    assert.equal(pollingDone(monitoring({ state: 'ENDED', steps: steps('DONE') })), true);
+    assert.equal(pollingDone(monitoring({ state: 'ENDED', steps: steps('FAILED') })), true);
+    assert.equal(pollingDone(monitoring({ state: 'ENDED', steps: steps('SKIPPED') })), true);
+  });
+
+  test('종료 전 · 열리지 않은 이벤트는 멈추지 않는다', () => {
+    assert.equal(pollingDone(monitoring({ steps: steps('UPCOMING') })), false);
+    assert.equal(pollingDone(monitoring({ state: 'UNAVAILABLE', steps: [] })), false);
+  });
+});
+
 describe('그래프', () => {
   const t = (hm: string) => `2026-10-27T${hm}:00+09:00`;
+  const minute = (hm: string, entries: number | null, success: number | null, soldOut: number | null) => ({ t: t(hm), entries, success, soldOut });
 
-  test('분당 부제 — 최근 1분, 품절 뒤에는 품절 건수도', () => {
+  test('분당 부제 — 최근 1분은 다 찬 마지막 칸(마지막 칸은 지금 분), 품절 뒤에는 품절 건수도', () => {
     const series: MonitoringSeries = {
-      perMinute: [
-        { t: t('15:11'), entries: 700, success: 640, soldOut: 0 },
-        { t: t('15:12'), entries: 612, success: 630, soldOut: 12 },
-      ],
+      perMinute: [minute('15:10', 700, 640, 0), minute('15:11', 612, 630, 12), minute('15:12', 90, 80, 3)],
       stock: [],
       projection: null,
     };
-    assert.equal(perMinuteSubtitle(series, 'LIVE'), '최근 1분: 입장 612명 · 발급 성공 630건');
-    assert.equal(perMinuteSubtitle(series, 'SOLD_OUT'), '최근 1분: 입장 612명 · 발급 성공 630건 · 품절 12건');
-    assert.equal(perMinuteSubtitle({ ...series, perMinute: [{ t: t('15:12'), entries: null, success: null, soldOut: null }] }, 'LIVE'), '최근 1분: 입장 - · 발급 성공 -');
-    assert.equal(perMinuteSubtitle({ ...series, perMinute: [] }, 'LIVE'), null);
+    // 15:12:14 조회 — 15:12 칸은 14초 치라 15:11 칸
+    assert.equal(perMinuteSubtitle(series, 'LIVE', NOW), '최근 1분: 입장 612명 · 발급 성공 630건');
+    assert.equal(perMinuteSubtitle(series, 'SOLD_OUT', NOW), '최근 1분: 입장 612명 · 발급 성공 630건 · 품절 12건');
+    assert.equal(perMinuteSubtitle(series, 'LIVE', t('15:13')), '최근 1분: 입장 90명 · 발급 성공 80건');
+    // 다 찬 칸이 없으면 마지막 칸
+    assert.equal(perMinuteSubtitle({ ...series, perMinute: [minute('15:12', null, null, null)] }, 'LIVE', NOW), '최근 1분: 입장 - · 발급 성공 -');
+    assert.equal(perMinuteSubtitle({ ...series, perMinute: [] }, 'LIVE', NOW), null);
   });
 
   test('가로축 글자는 정각 간격 — 약 8개 이하', () => {
@@ -405,38 +442,63 @@ describe('그래프', () => {
     assert.equal(tickMinutes(73), 10);
     assert.equal(tickMinutes(100), 15);
     assert.equal(tickMinutes(200), 30);
-    assert.equal(isTick(t('14:10'), 10), true);
-    assert.equal(isTick(t('14:11'), 10), false);
-    assert.equal(isTick(t('00:00'), 60), true); // 한국 자정
+    assert.equal(isTick(ms(t('14:10')), 10), true);
+    assert.equal(isTick(ms(t('14:11')), 10), false);
+    assert.equal(isTick(ms(t('00:00')), 60), true); // 한국 자정
   });
 
-  test('정각 눈금은 데이터 없는 구간(예상 점선)까지 — 한국 시각 기준', () => {
-    assert.deepEqual(timeTicks(ms(t('14:03')), ms(t('14:31')), 10).map((v) => new Date(v + 9 * 3_600_000).toISOString().slice(11, 16)), ['14:10', '14:20', '14:30']);
-    assert.deepEqual(timeTicks(ms(t('15:12')), ms(t('15:21')), 5).map((v) => new Date(v + 9 * 3_600_000).toISOString().slice(11, 16)), ['15:15', '15:20']);
-    assert.deepEqual(timeTicks(ms(t('15:00')), ms(t('15:00')), 5), [ms(t('15:00'))]);
+  /** 15:00 ~ 15:02 세 칸 — 분당 · 재고가 같은 칸 */
+  const series = (stock: (number | null)[], projection: string | null): MonitoringSeries => ({
+    perMinute: stock.map((_, i) => minute(`15:0${i}`, 10, 10, 0)),
+    stock: stock.map((v, i) => ({ t: t(`15:0${i}`), remaining: v })),
+    projection: projection ? { at: projection } : null,
+  });
+  const END_AT = t('15:40');
+
+  test('두 그래프는 같은 1분 칸 가로축 — 소진 예상이 있으면 그 분까지 늘린다', () => {
+    const none = chartAxis(series([15000, 12000, 9000], null), 'LIVE', END_AT);
+    assert.deepEqual(none.minutes, [ms(t('15:00')), ms(t('15:01')), ms(t('15:02'))]);
+    assert.equal(none.projectionIndex, null);
+    assert.equal(none.tick, 5);
+
+    const projected = chartAxis(series([15000, 12000, 9000], '2026-10-27T15:05:30+09:00'), 'LIVE', END_AT);
+    assert.deepEqual(projected.minutes.map((v) => kstIso(v).slice(11, 16)), ['15:00', '15:01', '15:02', '15:03', '15:04', '15:05']);
+    assert.equal(projected.projectionIndex, 5);
+    // 분당 막대는 늘린 칸이 비어 있다
+    assert.deepEqual(onAxis([1, 2, 3], projected), [1, 2, 3, null, null, null]);
+    assert.equal(minuteSlot(projected, '2026-10-27T15:01:40+09:00'), ms(t('15:01')));
+    assert.equal(minuteSlot(projected, t('14:59')), null);
   });
 
-  const stock = (values: (number | null)[]) => values.map((v, i) => ({ t: t(`15:0${i}`), remaining: v }));
+  test('이벤트 종료 뒤에야 소진되는 예상 · 품절 · 지금 분 안의 예상은 늘리지 않는다', () => {
+    assert.equal(chartAxis(series([15000, 12000, 9000], t('15:41')), 'LIVE', END_AT).minutes.length, 3);
+    assert.equal(chartAxis(series([300, 0, 0], t('15:05')), 'SOLD_OUT', END_AT).minutes.length, 3);
+    const thisMinute = chartAxis(series([15000, 12000, 30], '2026-10-27T15:02:40+09:00'), 'LIVE', END_AT);
+    assert.equal(thisMinute.minutes.length, 3);
+    assert.equal(thisMinute.projectionIndex, null);
+  });
 
-  test('소진 예상 점선 — 마지막 실제 값에서 예상 시각 0까지', () => {
-    const d = stockChart({ perMinute: [], stock: stock([15000, 12000, null]), projection: { at: t('15:21') } }, 'LIVE', null);
+  test('소진 예상 점선 — 마지막 실제 값에서 예상 칸 0까지', () => {
+    const s = series([15000, 12000, null], t('15:05'));
+    const d = stockChart(s, 'LIVE', null, chartAxis(s, 'LIVE', END_AT));
     assert.equal(d.hasProjection, true);
-    assert.equal(d.x.length, 4);
-    assert.equal(d.x[3], ms(t('15:21')));
-    assert.deepEqual(d.remaining, [15000, 12000, null, null]);
-    assert.deepEqual(d.projection, [null, 12000, null, 0]);
-    assert.deepEqual(d.soldOut, [null, null, null, null]);
+    assert.deepEqual(d.remaining, [15000, 12000, null, null, null, null]);
+    assert.deepEqual(d.projection, [null, 12000, null, null, null, 0]);
+    assert.deepEqual(d.soldOut, [null, null, null, null, null, null]);
+    assert.equal(d.lastActual, ms(t('15:01')));
   });
 
   test('예상이 없으면 점선 없음', () => {
-    const d = stockChart({ perMinute: [], stock: stock([15000, 12000]), projection: null }, 'LIVE', null);
+    const s = series([15000, 12000], null);
+    const d = stockChart(s, 'LIVE', null, chartAxis(s, 'LIVE', END_AT));
     assert.equal(d.hasProjection, false);
     assert.deepEqual(d.projection, [null, null]);
-    assert.equal(d.x.length, 2);
+    assert.deepEqual(d.remaining, [15000, 12000]);
   });
 
-  test('품절이면 예상 대신 품절 지점', () => {
-    const d = stockChart({ perMinute: [], stock: stock([300, 0, 0]), projection: { at: t('15:21') } }, 'SOLD_OUT', t('15:01'));
+  test('품절이면 예상 대신 품절 칸', () => {
+    const s = series([300, 0, 0], t('15:21'));
+    const d = stockChart(s, 'SOLD_OUT', t('15:01'), chartAxis(s, 'SOLD_OUT', END_AT));
     assert.equal(d.hasProjection, false);
     assert.deepEqual(d.soldOut, [null, 0, null]);
   });

@@ -7,7 +7,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -60,10 +59,17 @@ class MonitoringApiTest extends IntegrationTest {
 		data.event(id, tenant).approved("HOSTING", "OPEN", "live0" + id).startAt(NOW.minusMinutes(10)).insert();
 	}
 
-	/** 정상 진행 중 값. 재고 10000 중 4540 남음 */
+	static final String P1_SUCCESS = "{\"pod\":\"p1\",\"result\":\"success\"}";
+
+	static final String P1_SOLD_OUT = "{\"pod\":\"p1\",\"result\":\"sold_out\"}";
+
+	/**
+	 * 정상 진행 중 값. 재고 10000 중 4540 남음. 카운터는 Pod별 누적 원값 — 첫 칸에 성공 500 · 품절 3 · 입장 40,
+	 * 지금 칸(마지막 격자 ~ 지금)에 성공 30 · 품절 9 · 입장 2(새 Pod p2)
+	 */
 	void respondLive(long eventId, boolean newMetrics) {
 		var q = new MonitoringQueries(A, eventId);
-		prometheus.respond(q.stockRemaining(), r -> r.path().endsWith("query_range") ? matrix(r, "4540") : vector("4540"))
+		prometheus.respond(q.stockRemaining(), r -> range(r) ? matrix(r, "4540") : vector("4540"))
 			.respond(q.waiting(), vector("1200"))
 			.respond(q.redisUp(), vector("1"))
 			.respond(q.processedLastMinute(), vector("600"))
@@ -71,30 +77,49 @@ class MonitoringApiTest extends IntegrationTest {
 			.respond(q.rps(), vector("120"))
 			.respond(q.errorRps(), vector("0"))
 			.respond(q.claimP95(), vector("0.12"))
-			.respond(q.entriesPerMinute(), r -> matrix(r, "40"))
-			.respond(q.claimsPerMinute(), r -> "[" + matrix(r, "500", "success") + "," + matrix(r, "3", "sold_out") + "]");
-		prometheus.respondStartingWith(q.soldOutSince(Duration.ZERO).replace("[60s]))", ""), vector("12"));
+			.respond(q.claimsByPod(), r -> range(r)
+					? "[" + counter(r, P1_SUCCESS, "500") + "," + counter(r, P1_SOLD_OUT, "3") + "]"
+					: "[" + sample(P1_SUCCESS, "530") + "," + sample(P1_SOLD_OUT, "12") + "]")
+			.respond(q.entriesByPod(), r -> range(r) ? "[" + counter(r, "{\"pod\":\"p1\"}", "40") + "]"
+					: "[" + sample("{\"pod\":\"p1\"}", "40") + "," + sample("{\"pod\":\"p2\"}", "2") + "]");
 		if (newMetrics) {
-			prometheus.respond(q.sessionsActive(), r -> r.path().endsWith("query_range") ? matrix(r, "6100") : vector("6820"))
+			prometheus.respond(q.sessionsActive(), r -> range(r) ? matrix(r, "6100") : vector("6820"))
 				.respond(q.rejects5m(), vector("2"));
 		}
 	}
 
-	static String vector(String value) {
-		return "[{\"metric\":{},\"value\":[1,\"" + value + "\"]}]";
+	static boolean range(Request r) {
+		return r.path().endsWith("query_range");
 	}
 
-	/** 요청한 격자(start ~ end, step) 모든 시각에 같은 값. result 라벨을 주면 그 시리즈 하나만(JSON 배열 원소) */
-	static String matrix(Request r, String value, String... result) {
+	static String vector(String value) {
+		return "[" + sample("{}", value) + "]";
+	}
+
+	static String sample(String labels, String value) {
+		return "{\"metric\":" + labels + ",\"value\":[1,\"" + value + "\"]}";
+	}
+
+	/** 누적 카운터 시리즈 하나(JSON 배열 원소) — 첫 격자 0, 그 뒤 value(첫 1분에 value만큼 늘고 그대로) */
+	static String counter(Request r, String labels, String value) {
+		long start = (long) Double.parseDouble(r.params().get("start"));
+		long end = (long) Double.parseDouble(r.params().get("end"));
+		List<String> points = new ArrayList<>();
+		for (long t = start; t <= end; t += 60) {
+			points.add("[" + t + ",\"" + (t == start ? "0" : value) + "\"]");
+		}
+		return "{\"metric\":" + labels + ",\"values\":[" + String.join(",", points) + "]}";
+	}
+
+	/** 요청한 격자(start ~ end, step) 모든 시각에 같은 값 — 라벨 없는 시리즈 하나(게이지) */
+	static String matrix(Request r, String value) {
 		long start = (long) Double.parseDouble(r.params().get("start"));
 		long end = (long) Double.parseDouble(r.params().get("end"));
 		List<String> points = new ArrayList<>();
 		for (long t = start; t <= end; t += 60) {
 			points.add("[" + t + ",\"" + value + "\"]");
 		}
-		String labels = result.length == 0 ? "{}" : "{\"result\":\"" + result[0] + "\"}";
-		String series = "{\"metric\":" + labels + ",\"values\":[" + String.join(",", points) + "]}";
-		return result.length == 0 ? "[" + series + "]" : series;
+		return "[{\"metric\":{},\"values\":[" + String.join(",", points) + "]}]";
 	}
 
 	static final Pattern METRIC = Pattern
@@ -115,6 +140,8 @@ class MonitoringApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.events[0].eventId").value(501))
 			.andExpect(jsonPath("$.events[0].group").value("LIVE"))
 			.andExpect(jsonPath("$.events[0].state").value("LIVE"))
+			.andExpect(jsonPath("$.events[0].endAt").value(startsWith(NOW.plusMinutes(170).toString().substring(0, 16))))
+			.andExpect(jsonPath("$.events[0].hostingEndAt").doesNotExist())
 			.andExpect(jsonPath("$.defaultEventId").value(501));
 		assertThat(prometheus.requests()).isEmpty();
 	}
@@ -178,15 +205,23 @@ class MonitoringApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.kpi.planCapacity").value(30000))
 			.andExpect(jsonPath("$.kpi.planName").value("M"))
 			.andExpect(jsonPath("$.kpi.peak.value").value(6820))
+			// 첫 칸 = 입장 분(구간 시작) — Pod별 누적값 차이
+			.andExpect(jsonPath("$.series.perMinute[0].t")
+				.value(startsWith(MonitoringPhase.entryAt(NOW.minusMinutes(10)).truncatedTo(ChronoUnit.MINUTES).toString())))
 			.andExpect(jsonPath("$.series.perMinute[0].entries").value(40))
 			.andExpect(jsonPath("$.series.perMinute[0].success").value(500))
 			.andExpect(jsonPath("$.series.perMinute[0].soldOut").value(3))
+			.andExpect(jsonPath("$.series.perMinute[1].success").value(0))
+			// 마지막 칸 = 마지막 격자 ~ 지금. 새 Pod(p2)는 0부터
+			.andExpect(jsonPath("$.series.perMinute[-1:].success").value(contains(30)))
+			.andExpect(jsonPath("$.series.perMinute[-1:].soldOut").value(contains(9)))
+			.andExpect(jsonPath("$.series.perMinute[-1:].entries").value(contains(2)))
 			.andExpect(jsonPath("$.series.stock[0].remaining").value(4540))
 			.andExpect(jsonPath("$.series.projection.at").exists())
 			.andExpect(jsonPath("$.rejects5m").value(2));
 
-		// instant 11 + range 4, 전부 이 테넌트 · 이 이벤트 라벨
-		assertThat(prometheus.requests()).hasSize(15).allSatisfy(r -> {
+		// instant 12 + range 4, 전부 이 테넌트 · 이 이벤트 라벨
+		assertThat(prometheus.requests()).hasSize(16).allSatisfy(r -> {
 			Matcher m = METRIC.matcher(r.query());
 			int metrics = 0;
 			while (m.find()) {
@@ -231,9 +266,8 @@ class MonitoringApiTest extends IntegrationTest {
 		mvc.perform(get("/api/portal/monitoring/events/{id}", 602).cookie(loginCookie(A)))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.state").value("BEFORE_ENTRY"))
-			// 호스팅 시작(시작 − 2시간) 전 — 완료되지 않은 첫 단계(호스팅 시작)가 현재
-			.andExpect(jsonPath("$.steps[0].status").value("CURRENT"))
-			.andExpect(jsonPath("$.steps[1].status").value("UPCOMING"))
+			// 호스팅 시작(시작 − 2시간) 전 — 기다리는 구간이라 현재(빈 점) 없이 모두 예정
+			.andExpect(jsonPath("$.steps[*].status").value(contains("UPCOMING", "UPCOMING", "UPCOMING", "UPCOMING", "UPCOMING")))
 			.andExpect(jsonPath("$.kpi").doesNotExist())
 			.andExpect(jsonPath("$.header.service").doesNotExist());
 		assertThat(prometheus.requests()).isEmpty();
@@ -251,13 +285,44 @@ class MonitoringApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.steps[0].status").value("DONE"))
 			.andExpect(jsonPath("$.steps[0].actualAt").value(startsWith(NOW.minusMinutes(29).toString().substring(0, 16))))
 			.andExpect(jsonPath("$.steps[0].delayed").value(false))
-			.andExpect(jsonPath("$.steps[1].status").value("CURRENT"))
+			.andExpect(jsonPath("$.steps[1].status").value("UPCOMING")) // 입장 전 — 기다리는 구간
 			.andExpect(jsonPath("$.steps[1].actualAt").doesNotExist());
 		mvc.perform(get("/api/portal/monitoring/events/{id}", 604).cookie(loginCookie(A)))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.steps[0].status").value("CURRENT"))
 			.andExpect(jsonPath("$.steps[0].delayed").value(true))
 			.andExpect(jsonPath("$.steps[1].status").value("UPCOMING"));
+	}
+
+	@Test
+	void 종료_뒤_품절_시각은_결과가_준비되면_마지막_발급_성공_분() throws Exception {
+		LocalDateTime start = NOW.minusHours(6).truncatedTo(ChronoUnit.MINUTES);
+		// 재고(10000)를 다 발급 — 마지막 성공 start+5분 20초(issued_at = 대기열 진입 + 1초)
+		data.event(608, A).approved("ENDED", "EXPIRED", "sold0608").startAt(start).insert();
+		data.statusLog(A, 608, "EVENT", "SCHEDULED", "OPEN", start.minusMinutes(5), null, null);
+		data.summaryAggregated(A, 608, 12000, 12000, 9000, start.plusMinutes(1));
+		data.summaryHistory(A, 608, 10000, 10000, 2000, "1.0000", "s3://h/608.csv", start.plusHours(4));
+		data.issuance(A, A, 608, "u1", 1, start.plusMinutes(3), "SUCCESS");
+		data.issuance(A, A, 608, "u2", 2, start.plusMinutes(5).plusSeconds(19), "SUCCESS");
+		data.issuance(A, A, 608, "u3", 3, start.plusMinutes(7), "FAILED_SOLDOUT");
+		data.issuance(A, B, 608, "x9", 9, start.plusMinutes(9), "SUCCESS"); // 다른 테넌트 행은 거른다
+		// 남은 재고가 있는 이벤트 — 품절 시각 없음
+		data.event(609, A).approved("ENDED", "EXPIRED", "left0609").startAt(start).insert();
+		data.statusLog(A, 609, "EVENT", "SCHEDULED", "OPEN", start.minusMinutes(5), null, null);
+		data.summaryAggregated(A, 609, 100, 100, 90, start.plusMinutes(1));
+		data.summaryHistory(A, 609, 10000, 90, 0, "0.0090", "s3://h/609.csv", start.plusHours(4));
+		data.issuance(A, A, 609, "u1", 1, start.plusMinutes(3), "SUCCESS");
+
+		mvc.perform(get("/api/portal/monitoring/events/{id}", 608).cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.state").value("ENDED"))
+			.andExpect(jsonPath("$.header.soldOutAt").value(startsWith(start.plusMinutes(5).toString() + ":00")))
+			.andExpect(jsonPath("$.steps[*].status").value(contains("DONE", "DONE", "DONE", "DONE", "DONE")));
+		mvc.perform(get("/api/portal/monitoring/events/{id}", 609).cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.header.soldOutAt").doesNotExist())
+			.andExpect(jsonPath("$.steps[4].status").value("DONE"));
+		assertThat(prometheus.requests()).isEmpty();
 	}
 
 	@Test

@@ -17,6 +17,7 @@ import com.tetra.portal.monitoring.MonitoringResponses.Service;
 import com.tetra.portal.monitoring.MonitoringResponses.Step;
 import com.tetra.portal.monitoring.MonitoringResponses.StepKey;
 import com.tetra.portal.monitoring.MonitoringResponses.StepStatus;
+import com.tetra.portal.result.ResultResponse.State;
 
 /** 서비스 표시 · 예상 대기 · 소진 예상 · 최고 동시 접속 · 품절 시각 · 진행 단계 · null/0 규칙. */
 class MonitoringRulesTest {
@@ -143,33 +144,40 @@ class MonitoringRulesTest {
 	}
 
 	@Test
-	void 최고_동시_접속은_최댓값과_처음_나온_시각() {
-		var peak = MonitoringRules.peak(grid(4), Arrays.asList(10.0, null, 30.0, 30.0), 20.0, T.plusSeconds(250));
+	void 최고_동시_접속은_최댓값과_처음_나온_칸의_분() {
+		var peak = MonitoringRules.peak(grid(4), Arrays.asList(10.0, null, 30.0, 30.0));
 		assertThat(peak).isEqualTo(new MonitoringRules.PeakAt(30, T.plusSeconds(120)));
 	}
 
 	@Test
-	void 지금_값이_격자보다_크면_지금() {
-		var at = T.plusSeconds(200);
-		assertThat(MonitoringRules.peak(grid(2), List.of(10.0, 20.0), 25.0, at)).isEqualTo(new MonitoringRules.PeakAt(25, at));
+	void 마지막_칸은_지금_값이라_지금_분() {
+		// 이벤트 12: 10:06에 20이 되고 그 뒤 그대로 — 결과 탭 peak_at 10:06과 같은 분
+		assertThat(MonitoringRules.peak(grid(3), List.of(10.0, 20.0, 25.0))).isEqualTo(new MonitoringRules.PeakAt(25, T.plusSeconds(120)));
 	}
 
 	@Test
 	void 값이_하나도_없으면_최고_동시_접속_없음() {
-		assertThat(MonitoringRules.peak(grid(2), Arrays.asList(null, null), null, T)).isNull();
-		assertThat(MonitoringRules.peak(List.of(), List.of(), null, T)).isNull();
+		assertThat(MonitoringRules.peak(grid(2), Arrays.asList(null, null))).isNull();
+		assertThat(MonitoringRules.peak(List.of(), List.of())).isNull();
 	}
 
 	@Test
-	void 품절_시각은_재고가_처음_0이_된_분() {
-		assertThat(MonitoringRules.soldOutAt(grid(4), Arrays.asList(5.0, null, 0.0, 0.0), 0L, T.plusSeconds(250)))
-			.isEqualTo(T.plusSeconds(120));
+	void 품절_시각은_재고가_0이_되어_계속_0인_첫_칸의_분() {
+		assertThat(MonitoringRules.soldOutAt(grid(4), Arrays.asList(5.0, null, 0.0, 0.0))).isEqualTo(T.plusSeconds(120));
+		// 마지막 칸(지금 값)에서 처음 0
+		assertThat(MonitoringRules.soldOutAt(grid(3), List.of(5.0, 1.0, 0.0))).isEqualTo(T.plusSeconds(120));
 	}
 
 	@Test
-	void 추이에_아직_없으면_지금_분() {
-		assertThat(MonitoringRules.soldOutAt(grid(2), List.of(5.0, 1.0), 0L, T.plusSeconds(150))).isEqualTo(T.plusSeconds(120));
-		assertThat(MonitoringRules.soldOutAt(grid(2), List.of(5.0, 1.0), 1L, T.plusSeconds(150))).isNull();
+	void 앞쪽_0_뒤에_재고가_다시_보이면_그_뒤의_0부터() {
+		// 재고를 아직 못 읽은 0(Redis 키 없음 = 0) 뒤에 재고가 보이는 경우
+		assertThat(MonitoringRules.soldOutAt(grid(5), List.of(0.0, 15.0, 3.0, 0.0, 0.0))).isEqualTo(T.plusSeconds(180));
+	}
+
+	@Test
+	void 재고가_남았으면_품절_시각_없음() {
+		assertThat(MonitoringRules.soldOutAt(grid(2), List.of(5.0, 1.0))).isNull();
+		assertThat(MonitoringRules.soldOutAt(grid(2), Arrays.asList(null, null))).isNull();
 	}
 
 	// ---- null / 0 ----
@@ -190,17 +198,20 @@ class MonitoringRulesTest {
 
 	static final LocalDateTime ENTRY = MonitoringPhase.entryAt(START);
 
-	static final LocalDateTime HOSTING_END = START.plusMinutes(40);
+	/** 이벤트 종료 end_at — 호스팅 종료와 다르다(이벤트 12: end_at 10:20, hosting_end_at 10:25) */
+	static final LocalDateTime END = START.plusMinutes(40);
+
+	static final LocalDateTime HOSTING_END = END.plusMinutes(5);
 
 	static final LocalDateTime HOSTED_AT = HOSTING_START.plusMinutes(1);
 
 	static final LocalDateTime OPENED_AT = ENTRY.plusSeconds(10);
 
-	/** 상태 · 첫 전이 로그 시각(HOSTING · OPEN, 없으면 null) */
+	/** 상태 · 첫 전이 로그 시각(HOSTING · OPEN, 없으면 null) · 결과 탭 판정 */
 	static EventDetail detail(HostingStatus hosting, EventStatus event, LocalDateTime hostingStartedAt,
-			LocalDateTime openedAt, boolean resultReady) {
-		var view = new EventView(1L, "이벤트", HOSTING_START, START, HOSTING_END, HOSTING_END, event, hosting, 15000L, "M");
-		return new EventDetail(view, 30000L, resultReady, null, hostingStartedAt, openedAt);
+			LocalDateTime openedAt, State result) {
+		var view = new EventView(1L, "이벤트", HOSTING_START, START, END, HOSTING_END, event, hosting, 15000L, "M");
+		return new EventDetail(view, 30000L, result, null, hostingStartedAt, openedAt, null);
 	}
 
 	static List<Step> stepsOf(MonitoringPhase phase, LocalDateTime now, EventDetail detail) {
@@ -225,33 +236,35 @@ class MonitoringRulesTest {
 
 	static final StepStatus S = StepStatus.SKIPPED;
 
-	static final EventDetail DEPLOYED = detail(HostingStatus.DEPLOYED, EventStatus.SCHEDULED, null, null, false);
+	static final EventDetail DEPLOYED = detail(HostingStatus.DEPLOYED, EventStatus.SCHEDULED, null, null, State.IN_PROGRESS);
 
-	static final EventDetail HOSTED = detail(HostingStatus.HOSTING, EventStatus.SCHEDULED, HOSTED_AT, null, false);
+	static final EventDetail HOSTED = detail(HostingStatus.HOSTING, EventStatus.SCHEDULED, HOSTED_AT, null, State.IN_PROGRESS);
 
-	static final EventDetail OPENED = detail(HostingStatus.HOSTING, EventStatus.OPEN, HOSTED_AT, OPENED_AT, false);
+	static final EventDetail OPENED = detail(HostingStatus.HOSTING, EventStatus.OPEN, HOSTED_AT, OPENED_AT, State.IN_PROGRESS);
 
 	@Test
-	void 호스팅_시작_전에는_호스팅_시작이_현재() {
+	void 호스팅_시작_전에는_모두_예정_기다리는_구간에_현재_없음() {
 		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, HOSTING_START.minusMinutes(1), DEPLOYED);
-		assertThat(steps).extracting(Step::status).containsExactly(C, U, U, U, U);
+		assertThat(steps).extracting(Step::status).containsExactly(U, U, U, U, U);
 		assertThat(steps).extracting(Step::delayed).containsOnly(false);
 		assertThat(steps.get(0).actualAt()).isNull();
 	}
 
 	@Test
-	void 호스팅_시작_시각이_지났는데_DEPLOYED면_현재_그대로_지연() {
+	void 호스팅_시작_시각이_지났는데_DEPLOYED면_현재_지연() {
 		// 시각만으로 완료하지 않는다 — WF2-1이 확인 중이거나 돌지 않았다
 		assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, HOSTING_START, DEPLOYED)).containsExactly(C, U, U, U, U);
 		assertThat(delays(MonitoringPhase.BEFORE_ENTRY, HOSTING_START, DEPLOYED)).containsExactly(true, false, false, false,
 				false);
+		// 입장 시각도 지났으면 입장도 지연(앞 단계가 안 끝나 현재는 호스팅 시작 하나)
 		assertThat(statuses(MonitoringPhase.ENTRY_OPEN, ENTRY, DEPLOYED)).containsExactly(C, U, U, U, U);
+		assertThat(delays(MonitoringPhase.ENTRY_OPEN, ENTRY, DEPLOYED)).containsExactly(true, true, false, false, false);
 	}
 
 	@Test
 	void HOSTING이면_완료_시각은_첫_전이_로그() {
 		var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, HOSTING_START.plusMinutes(2), HOSTED);
-		assertThat(steps).extracting(Step::status).containsExactly(D, C, U, U, U);
+		assertThat(steps).extracting(Step::status).containsExactly(D, U, U, U, U);
 		assertThat(steps.get(0).actualAt().toLocalDateTime()).isEqualTo(HOSTED_AT);
 		assertThat(steps.get(0).delayed()).isFalse();
 	}
@@ -260,20 +273,23 @@ class MonitoringRulesTest {
 	void 로그가_없어도_HOSTING_뒤_상태면_호스팅_시작은_완료() {
 		for (HostingStatus status : List.of(HostingStatus.HOSTING, HostingStatus.ENDED, HostingStatus.END_FAILED)) {
 			var steps = stepsOf(MonitoringPhase.BEFORE_ENTRY, START.minusMinutes(90),
-					detail(status, EventStatus.SCHEDULED, null, null, false));
+					detail(status, EventStatus.SCHEDULED, null, null, State.IN_PROGRESS));
 			assertThat(steps.get(0).status()).as(status.name()).isEqualTo(D);
 			assertThat(steps.get(0).actualAt()).isNull(); // 화면은 예정 시각으로
 		}
 	}
 
 	@Test
-	void 입장_전에는_입장이_현재() {
-		assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), HOSTED)).containsExactly(D, C, U, U, U);
-		assertThat(delays(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), HOSTED)).containsOnly(false);
+	void 호스팅_시작_완료부터_입장_전까지는_입장이_예정() {
+		// 기다리는 구간 — 빈 점(현재)이 없다. 입장 시각 전에 OPEN이 돼도(준비 T−15) 고객 입장은 입장 시각부터
+		for (EventDetail d : List.of(HOSTED, OPENED)) {
+			assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), d)).containsExactly(D, U, U, U, U);
+			assertThat(delays(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), d)).containsOnly(false);
+		}
 	}
 
 	@Test
-	void 입장_시각이_지났는데_OPEN이_아니면_입장이_현재_그대로_지연() {
+	void 입장_시각이_지났는데_OPEN이_아니면_입장이_현재_지연() {
 		assertThat(statuses(MonitoringPhase.ENTRY_OPEN, ENTRY, HOSTED)).containsExactly(D, C, U, U, U);
 		assertThat(delays(MonitoringPhase.ENTRY_OPEN, ENTRY, HOSTED)).containsExactly(false, true, false, false, false);
 		// 시작 시각이 지나도 OPEN이 안 됐으면 이벤트 진행은 현재가 되지 않는다
@@ -289,11 +305,12 @@ class MonitoringRulesTest {
 		assertThat(entry.get(1).actualAt().toLocalDateTime()).isEqualTo(OPENED_AT);
 		assertThat(statuses(MonitoringPhase.LIVE, START, OPENED)).containsExactly(D, D, C, U, U);
 		assertThat(statuses(MonitoringPhase.SOLD_OUT, START.plusMinutes(10), OPENED)).containsExactly(D, D, C, U, U);
+		assertThat(delays(MonitoringPhase.LIVE, END.minusSeconds(1), OPENED)).containsOnly(false);
 	}
 
 	@Test
 	void OPEN_FAILED면_입장은_실패_입장_시각_전후_모두() {
-		var failed = detail(HostingStatus.HOSTING, EventStatus.OPEN_FAILED, HOSTED_AT, null, false);
+		var failed = detail(HostingStatus.HOSTING, EventStatus.OPEN_FAILED, HOSTED_AT, null, State.IN_PROGRESS);
 		// 준비 실패는 종료 전까지 BEFORE_ENTRY
 		for (LocalDateTime now : List.of(ENTRY.minusMinutes(1), ENTRY, START.plusMinutes(1))) {
 			assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, now, failed)).as(now.toString()).containsExactly(D, F, U, U, U);
@@ -302,38 +319,43 @@ class MonitoringRulesTest {
 	}
 
 	@Test
-	void 종료_전에는_종료_칸이_지연이_아니다() {
-		assertThat(delays(MonitoringPhase.LIVE, HOSTING_END.minusSeconds(1), OPENED)).containsOnly(false);
+	void end_at에_이벤트_종료가_완료되고_호스팅_종료까지_결과_집계는_예정() {
+		// end_at ~ hosting_end_at은 기다리는 구간 — 아직 HOSTING · OPEN(WF4 전)이어도 현재(빈 점)가 없다
+		for (LocalDateTime now : List.of(END, HOSTING_END.minusSeconds(1))) {
+			var steps = stepsOf(MonitoringPhase.ENDED, now, OPENED);
+			assertThat(steps).extracting(Step::status).as(now.toString()).containsExactly(D, D, D, D, U);
+			assertThat(steps).extracting(Step::delayed).containsOnly(false);
+		}
 	}
 
 	@Test
-	void 정상_이벤트는_종료_시각이_지나도_WF4가_끝날_때까지_종료_처리_중() {
-		// hosting_end_at — 상태는 시각으로 ENDED지만 아직 HOSTING · OPEN. 이벤트 진행은 완료, 종료는 현재 + 지연(종료 처리 중)
-		var steps = stepsOf(MonitoringPhase.ENDED, HOSTING_END, OPENED);
-		assertThat(steps).extracting(Step::status).containsExactly(D, D, D, C, U);
-		assertThat(steps).extracting(Step::delayed).containsExactly(false, false, false, true, false);
-		// WF4 성공(ENDED · EXPIRED) — 종료 완료, 결과 집계가 현재(집계 중) → 결과가 준비되면 완료
-		var wf4 = detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, OPENED_AT, false);
+	void 호스팅_종료_뒤에는_WF4_집계가_끝날_때까지_결과_집계가_현재_준비되면_완료() {
+		// hosting_end_at — WF4가 아직 결과를 안 냈어도(HOSTING · OPEN) 집계 중
+		assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END, OPENED)).containsExactly(D, D, D, D, C);
+		var wf4 = detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, OPENED_AT, State.AGGREGATING);
 		assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), wf4)).containsExactly(D, D, D, D, C);
-		assertThat(delays(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), wf4)).containsOnly(false);
-		var ready = detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, OPENED_AT, true);
+		// WF4가 hosting_end_at 전에 끝났으면(종료 기록) 그때부터 집계 중
+		assertThat(statuses(MonitoringPhase.ENDED, END.plusMinutes(1), wf4)).containsExactly(D, D, D, D, C);
+		var ready = detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, OPENED_AT, State.READY);
 		assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(30), ready)).containsExactly(D, D, D, D, D);
+		assertThat(delays(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(30), ready)).containsOnly(false);
 	}
 
 	@Test
-	void END_FAILED면_종료는_현재_종료_처리_중() {
-		var endFailed = detail(HostingStatus.END_FAILED, EventStatus.OPEN, HOSTED_AT, OPENED_AT, false);
-		assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), endFailed)).containsExactly(D, D, D, C, U);
-		assertThat(delays(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), endFailed).get(3)).isTrue();
+	void END_FAILED면_결과_집계는_실패() {
+		var endFailed = detail(HostingStatus.END_FAILED, EventStatus.OPEN, HOSTED_AT, OPENED_AT, State.END_FAILED);
+		assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), endFailed)).containsExactly(D, D, D, D, F);
+		assertThat(delays(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), endFailed)).containsOnly(false);
 	}
 
 	@Test
 	void OPEN이_한_번도_안_된_채_끝나면_입장은_실패_뒤_단계는_진행_안_됨() {
-		// OPEN_FAILED인 채 종료 시각 · WF4가 EXPIRED로 바꾼 뒤(EXPIRED는 OPEN의 증거가 아니다) · 결과 행이 있어도 · 준비가 아예 안 돈 경우
-		var cases = List.of(detail(HostingStatus.HOSTING, EventStatus.OPEN_FAILED, HOSTED_AT, null, false),
-				detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, null, false),
-				detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, null, true),
-				detail(HostingStatus.HOSTING, EventStatus.SCHEDULED, HOSTED_AT, null, false));
+		// OPEN_FAILED인 채 end_at · WF4가 EXPIRED로 바꾼 뒤(EXPIRED는 OPEN의 증거가 아니다) · 결과 행이 있어도 · 준비가 아예 안 돈 경우 · END_FAILED
+		var cases = List.of(detail(HostingStatus.HOSTING, EventStatus.OPEN_FAILED, HOSTED_AT, null, State.IN_PROGRESS),
+				detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, null, State.AGGREGATING),
+				detail(HostingStatus.ENDED, EventStatus.EXPIRED, HOSTED_AT, null, State.READY),
+				detail(HostingStatus.HOSTING, EventStatus.SCHEDULED, HOSTED_AT, null, State.IN_PROGRESS),
+				detail(HostingStatus.END_FAILED, EventStatus.OPEN_FAILED, HOSTED_AT, null, State.END_FAILED));
 		for (EventDetail d : cases) {
 			assertThat(statuses(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), d)).containsExactly(D, F, S, S, S);
 			assertThat(delays(MonitoringPhase.ENDED, HOSTING_END.plusMinutes(5), d)).containsOnly(false);
@@ -341,11 +363,12 @@ class MonitoringRulesTest {
 	}
 
 	@Test
-	void 단계_시각은_호스팅_시작_입장_시작_종료_그리고_집계는_없음() {
+	void 단계_시각은_호스팅_시작_입장_시작_이벤트_종료_호스팅_종료() {
 		var steps = stepsOf(MonitoringPhase.LIVE, START, OPENED);
 		assertThat(steps).extracting(Step::step).containsExactly(StepKey.values());
-		assertThat(steps).extracting(s -> s.at() == null ? null : s.at().toLocalDateTime())
-			.containsExactly(HOSTING_START, ENTRY, START, HOSTING_END, null);
+		// 이벤트 종료 = end_at, 결과 집계 = hosting_end_at(이후 집계)
+		assertThat(steps).extracting(s -> s.at().toLocalDateTime())
+			.containsExactly(HOSTING_START, ENTRY, START, END, HOSTING_END);
 		// 실제 시각은 호스팅 시작 · 입장만
 		assertThat(steps).extracting(s -> s.actualAt() == null ? null : s.actualAt().toLocalDateTime())
 			.containsExactly(HOSTED_AT, OPENED_AT, null, null, null);

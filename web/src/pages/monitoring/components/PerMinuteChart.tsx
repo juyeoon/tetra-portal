@@ -12,18 +12,19 @@ import SectionTitle from '@/components/common/SectionTitle';
 import { chartColors, text } from '@/theme/theme';
 import type { EventMonitoring, MonitoringSeries } from '@/types';
 import { formatNumber } from '@/utils/format';
-import { isTick, minuteSlot, perMinuteSubtitle, tickMinutes } from '../monitoringView';
-import { Legend, chartSx, minuteLabel } from './chartParts';
+import { chartAxis, minuteSlot, onAxis, perMinuteSubtitle } from '../monitoringView';
+import { CHART_HEIGHT, CHART_MARGIN, Legend, TOOLTIP_PLACEMENT, Y_AXIS_WIDTH, chartSx, minuteXAxis } from './chartParts';
 
 /**
- * 분당 입장 · 발급 결과 — 성공 · 품절 누적 막대 + 입장(신규 세션) 선. 입장 시각 ~ 지금.
+ * 분당 입장 · 발급 결과 — 성공 · 품절 누적 막대 + 입장(신규 세션) 직선. 입장 칸 ~ 지금 칸(칸 = 그 분, 마지막 칸은 지금까지).
+ * 가로축은 남은 재고 그래프와 같은 칸(소진 예상까지 늘린 칸은 비어 있다).
  * 입장 선은 chartColors.neutral(ink-10)이 흰 카드에서 거의 보이지 않아 이 그래프에서만 text.tertiary(범례도 같이)
  */
 export default function PerMinuteChart({ m, series }: { m: EventMonitoring; series: MonitoringSeries }) {
+  const axis = chartAxis(series, m.state, m.period.endAt);
   const points = series.perMinute;
-  const step = tickMinutes(points.length);
-  const entryAt = minuteSlot(points, m.period.entryAt);
-  const startAt = minuteSlot(points, m.period.startAt);
+  const entryAt = minuteSlot(axis, m.period.entryAt);
+  const startAt = minuteSlot(axis, m.period.startAt);
   const count = (unit: string) => (v: number | null) => (v == null ? '-' : `${formatNumber(v)}${unit}`);
 
   return (
@@ -41,7 +42,7 @@ export default function PerMinuteChart({ m, series }: { m: EventMonitoring; seri
         분당 입장 · 발급 결과
       </SectionTitle>
       <Typography variant="body2" sx={{ mb: 1, color: text.tertiary }}>
-        {perMinuteSubtitle(series, m.state) ?? '-'}
+        {perMinuteSubtitle(series, m.state, m.lastUpdatedAt ?? m.serverTime) ?? '-'}
       </Typography>
       {points.length === 0 ? (
         <Typography variant="body2" sx={{ py: 6, textAlign: 'center', color: text.tertiary }}>
@@ -49,35 +50,27 @@ export default function PerMinuteChart({ m, series }: { m: EventMonitoring; seri
         </Typography>
       ) : (
         <ChartContainer
-          height={260}
-          margin={{ top: 20, right: 16, bottom: 0, left: 0 }}
-          xAxis={[
-            {
-              id: 'x',
-              scaleType: 'band',
-              data: points.map((p) => p.t),
-              categoryGapRatio: 0.25,
-              valueFormatter: (t: string) => minuteLabel(new Date(t).getTime()),
-              tickLabelInterval: (t: string) => isTick(t, step),
-            },
-          ]}
-          yAxis={[{ id: 'y', width: 56, min: 0, valueFormatter: (v: number) => formatNumber(v) }]}
+          height={CHART_HEIGHT}
+          margin={CHART_MARGIN}
+          xAxis={[minuteXAxis(axis)]}
+          yAxis={[{ id: 'y', width: Y_AXIS_WIDTH, min: 0, valueFormatter: (v: number) => formatNumber(v) }]}
           series={[
-            { type: 'bar', id: 'success', label: '발급 성공', stack: 'claims', color: chartColors.issued, data: points.map((p) => p.success), valueFormatter: count('건') },
-            { type: 'bar', id: 'soldOut', label: '품절', stack: 'claims', color: chartColors.soldOut, data: points.map((p) => p.soldOut), valueFormatter: count('건') },
-            { type: 'line', id: 'entries', label: '입장', color: text.tertiary, data: points.map((p) => p.entries), valueFormatter: count('명') },
+            { type: 'bar', id: 'success', label: '발급 성공', stack: 'claims', color: chartColors.issued, data: onAxis(points.map((p) => p.success), axis), valueFormatter: count('건') },
+            { type: 'bar', id: 'soldOut', label: '품절', stack: 'claims', color: chartColors.soldOut, data: onAxis(points.map((p) => p.soldOut), axis), valueFormatter: count('건') },
+            // 곡선 보간 없이 점과 점을 직선으로
+            { type: 'line', id: 'entries', label: '입장', color: text.tertiary, curve: 'linear', data: onAxis(points.map((p) => p.entries), axis), valueFormatter: count('명') },
           ]}
           sx={{ ...chartSx, '& .MuiLineElement-root': { strokeWidth: 2 } }}
         >
           <ChartsGrid horizontal />
           <BarPlot />
           <LinePlot />
-          {entryAt && <ChartsReferenceLine x={entryAt} label="입장" labelAlign="start" />}
-          {startAt && <ChartsReferenceLine x={startAt} label="시작" labelAlign="start" />}
+          {entryAt != null && <ChartsReferenceLine x={entryAt} label="입장" labelAlign="start" />}
+          {startAt != null && <ChartsReferenceLine x={startAt} label="시작" labelAlign="start" />}
           <ChartsXAxis />
           <ChartsYAxis />
           <ChartsAxisHighlight x="band" />
-          <ChartsTooltip trigger="axis" />
+          <ChartsTooltip trigger="axis" placement={TOOLTIP_PLACEMENT} />
         </ChartContainer>
       )}
     </Card>

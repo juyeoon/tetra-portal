@@ -33,6 +33,7 @@ import com.tetra.portal.monitoring.MonitoringResponses.EventMonitoring;
 import com.tetra.portal.monitoring.MonitoringResponses.Group;
 import com.tetra.portal.monitoring.MonitoringResponses.Service;
 import com.tetra.portal.monitoring.MonitoringResponses.StepStatus;
+import com.tetra.portal.result.ResultResponse.State;
 import com.tetra.portal.tenancy.TenantRouter;
 
 /**
@@ -43,7 +44,9 @@ class MonitoringServiceTest {
 
 	static final String TENANT = "aaaaaaaaaaaa";
 	static final LocalDateTime START = LocalDateTime.of(2026, 10, 27, 15, 0);
-	static final LocalDateTime HOSTING_END = START.plusMinutes(40);
+	/** 이벤트 종료 end_at — 호스팅 종료(hosting_end_at)는 5분 뒤 */
+	static final LocalDateTime END = START.plusMinutes(40);
+	static final LocalDateTime HOSTING_END = END.plusMinutes(5);
 
 	final TenantRouter router = mock(TenantRouter.class);
 	final MonitoringReader reader = mock(MonitoringReader.class);
@@ -63,15 +66,22 @@ class MonitoringServiceTest {
 		when(collector.collect(anyString(), anyLong(), any(), anyLong())).thenAnswer(inv -> metrics.build());
 	}
 
-	static EventView view(long id, LocalDateTime start, LocalDateTime hostingEnd, EventStatus eventStatus,
+	/** end = 이벤트 종료(end_at), 호스팅 종료는 그 5분 뒤 */
+	static EventView view(long id, LocalDateTime start, LocalDateTime end, EventStatus eventStatus,
 			HostingStatus hostingStatus) {
-		return new EventView(id, "이벤트 " + id, start.minusMinutes(100), start, start.plusMinutes(40), hostingEnd,
-				eventStatus, hostingStatus, 15000L, "M");
+		return new EventView(id, "이벤트 " + id, start.minusMinutes(100), start, end, end.plusMinutes(5), eventStatus,
+				hostingStatus, 15000L, "M");
 	}
 
 	static EventDetail detail(EventStatus eventStatus, HostingStatus hostingStatus) {
-		return new EventDetail(view(1, START, HOSTING_END, eventStatus, hostingStatus), 30000L, false,
-				"aut26.aaaaaaaaaaaa.example.com", null, null);
+		return new EventDetail(view(1, START, END, eventStatus, hostingStatus), 30000L, State.IN_PROGRESS,
+				"aut26.aaaaaaaaaaaa.example.com", null, null, null);
+	}
+
+	/** 결과가 나온 종료 이벤트 — 입장 시각에 OPEN이 된 기록(로그)이 있다 */
+	static EventDetail ended(State result, LocalDateTime soldOutAt) {
+		return new EventDetail(view(1, START, END, EventStatus.EXPIRED, HostingStatus.ENDED), 30000L, result,
+				"aut26.aaaaaaaaaaaa.example.com", null, MonitoringPhase.entryAt(START), soldOutAt);
 	}
 
 	MonitoringService service(String prometheusUrl) {
@@ -102,14 +112,77 @@ class MonitoringServiceTest {
 		assertThat(started.kpi().waiting()).isEqualTo(2400); // 같은 캐시 값이라도 시작 뒤에는 대기 인원
 		assertThat(started.lastUpdatedAt()).isEqualTo(before.lastUpdatedAt());
 
-		clock.set(HOSTING_END); // 종료 — 캐시가 남아 있어도 종료 화면
+		clock.set(END); // end_at — hosting_end_at 전이고 캐시가 남아 있어도 종료 화면
 		EventMonitoring ended = service.event(TENANT, 1L);
 		assertThat(ended.state()).isEqualTo(MonitoringPhase.ENDED);
+		assertThat(ended.header().endsInSec()).isNull();
 		assertThat(ended.kpi()).isNull();
 		assertThat(ended.series()).isNull();
 
 		// TEST-LEAD 원래: verify(collector, times(1)).collect(eq(TENANT), eq(1L), eq(START.minusMinutes(60)), anyLong());
 		verify(collector, times(1)).collect(eq(TENANT), eq(1L), eq(START.minusMinutes(5)), anyLong()); // TEST-LEAD
+	}
+
+	@Test
+	void 경계마다_상태와_진행_단계_입장_시작_end_at_hosting_end_at_집계_완료() {
+		MonitoringService service = service("http://prometheus");
+		LocalDateTime entry = MonitoringPhase.entryAt(START);
+		when(reader.event(eq(1L), any())).thenReturn(detail(EventStatus.SCHEDULED, HostingStatus.HOSTING));
+
+		clock.set(entry.minusSeconds(1)); // 호스팅 시작 완료 ~ 입장: 기다리는 구간 — 현재 없음
+		EventMonitoring before = service.event(TENANT, 1L);
+		assertThat(before.state()).isEqualTo(MonitoringPhase.BEFORE_ENTRY);
+		assertThat(before.steps()).extracting(s -> s.status())
+			.containsExactly(StepStatus.DONE, StepStatus.UPCOMING, StepStatus.UPCOMING, StepStatus.UPCOMING, StepStatus.UPCOMING);
+
+		when(reader.event(eq(1L), any())).thenReturn(detail(EventStatus.OPEN, HostingStatus.HOSTING));
+		clock.set(entry); // 입장 — 입장 진행 중
+		EventMonitoring open = service.event(TENANT, 1L);
+		assertThat(open.state()).isEqualTo(MonitoringPhase.ENTRY_OPEN);
+		assertThat(open.steps()).extracting(s -> s.status())
+			.containsExactly(StepStatus.DONE, StepStatus.CURRENT, StepStatus.UPCOMING, StepStatus.UPCOMING, StepStatus.UPCOMING);
+
+		clock.set(START); // 시작 — 이벤트 진행 중, 남은 시간은 end_at까지
+		EventMonitoring live = service.event(TENANT, 1L);
+		assertThat(live.state()).isEqualTo(MonitoringPhase.LIVE);
+		assertThat(live.header().endsInSec()).isEqualTo(Duration.between(START, END).toSeconds());
+		assertThat(live.steps()).extracting(s -> s.status())
+			.containsExactly(StepStatus.DONE, StepStatus.DONE, StepStatus.CURRENT, StepStatus.UPCOMING, StepStatus.UPCOMING);
+
+		clock.set(END.minusSeconds(1));
+		assertThat(service.event(TENANT, 1L).header().endsInSec()).isEqualTo(1);
+
+		clock.set(END); // end_at — 종료. 결과 집계는 hosting_end_at까지 예정(기다리는 구간)
+		EventMonitoring ended = service.event(TENANT, 1L);
+		assertThat(ended.state()).isEqualTo(MonitoringPhase.ENDED);
+		assertThat(ended.steps()).extracting(s -> s.status())
+			.containsExactly(StepStatus.DONE, StepStatus.DONE, StepStatus.DONE, StepStatus.DONE, StepStatus.UPCOMING);
+		assertThat(ended.steps().get(4).at().toLocalDateTime()).isEqualTo(HOSTING_END);
+
+		clock.set(HOSTING_END); // hosting_end_at — WF4 · 집계 중
+		assertThat(service.event(TENANT, 1L).steps().get(4).status()).isEqualTo(StepStatus.CURRENT);
+
+		when(reader.event(eq(1L), any())).thenReturn(ended(State.AGGREGATING, null));
+		clock.set(HOSTING_END.plusMinutes(5)); // WF4 끝(ENDED · EXPIRED) — 집계 중
+		assertThat(service.event(TENANT, 1L).steps().get(4).status()).isEqualTo(StepStatus.CURRENT);
+
+		when(reader.event(eq(1L), any())).thenReturn(ended(State.READY, null));
+		clock.set(HOSTING_END.plusMinutes(10)); // 집계 완료
+		assertThat(service.event(TENANT, 1L).steps()).extracting(s -> s.status()).containsOnly(StepStatus.DONE);
+
+		// 입장 · 시작 · end_at 1초 전에만 읽는다 — 같은 캐시 키 · TTL(실제 시간 15초) 안이라 한 번
+		verify(collector, times(1)).collect(anyString(), anyLong(), any(), anyLong());
+	}
+
+	@Test
+	void 종료_뒤_품절_시각은_결과가_준비되면_발급_이력에서() {
+		clock.set(HOSTING_END.plusMinutes(30));
+		LocalDateTime soldOut = START.plusMinutes(5);
+		when(reader.event(eq(1L), any())).thenReturn(ended(State.READY, soldOut));
+		EventMonitoring r = service("http://prometheus").event(TENANT, 1L);
+		assertThat(r.state()).isEqualTo(MonitoringPhase.ENDED);
+		assertThat(r.header().soldOutAt().toLocalDateTime()).isEqualTo(soldOut);
+		verify(collector, never()).collect(anyString(), anyLong(), any(), anyLong());
 	}
 
 	@Test
@@ -163,8 +236,8 @@ class MonitoringServiceTest {
 		LocalDateTime now = START.plusMinutes(12);
 		metrics.at = now.atZone(Kst.ZONE).toInstant();
 		Instant t0 = START.atZone(Kst.ZONE).toInstant();
-		metrics.minute(t0, 600.0, 10.0, 0.0, 15000.0, 6000.0).minute(t0.plusSeconds(60), 30.4, 630.0, 0.0, 14370.0, 7410.0);
-		metrics.soldOutTotal = 0.4;
+		metrics.minute(t0, 600L, 10L, 0L, 15000.0, 6000.0).minute(t0.plusSeconds(60), 30L, 630L, 0L, 14370.0, 7410.0);
+		metrics.soldOutTotal = 0L;
 		metrics.rejects5m = 2.6;
 
 		EventMonitoring r = assemble(now, metrics.build(), false);
@@ -182,6 +255,7 @@ class MonitoringServiceTest {
 		assertThat(r.kpi().peak().value()).isEqualTo(7410);
 		assertThat(r.kpi().peak().at().toLocalDateTime()).isEqualTo(START.plusMinutes(1));
 		assertThat(r.series().perMinute()).hasSize(2);
+		assertThat(r.series().perMinute().get(1).t().toLocalDateTime()).isEqualTo(START.plusMinutes(1)); // 구간 시작
 		assertThat(r.series().perMinute().get(1).entries()).isEqualTo(30);
 		assertThat(r.series().perMinute().get(1).success()).isEqualTo(630);
 		assertThat(r.series().stock().get(1).remaining()).isEqualTo(14370);
@@ -196,9 +270,9 @@ class MonitoringServiceTest {
 		LocalDateTime now = START.plusMinutes(20);
 		metrics.at = now.atZone(Kst.ZONE).toInstant();
 		Instant t0 = START.plusMinutes(17).atZone(Kst.ZONE).toInstant();
-		metrics.minute(t0, 10.0, 100.0, 0.0, 30.0, 7000.0).minute(t0.plusSeconds(60), 5.0, 30.0, 20.0, 0.0, 7000.0);
+		metrics.minute(t0, 10L, 100L, 0L, 30.0, 7000.0).minute(t0.plusSeconds(60), 5L, 30L, 20L, 0.0, 7000.0);
 		metrics.stockRemaining = 0.0;
-		metrics.soldOutTotal = 1234.0;
+		metrics.soldOutTotal = 1234L;
 
 		EventMonitoring r = assemble(now, metrics.build(), false);
 
@@ -217,7 +291,7 @@ class MonitoringServiceTest {
 		metrics.at = now.atZone(Kst.ZONE).toInstant();
 		metrics.sessionsActive = null;
 		metrics.rejects5m = null;
-		metrics.minute(START.atZone(Kst.ZONE).toInstant(), 600.0, 10.0, 0.0, 15000.0, null);
+		metrics.minute(START.atZone(Kst.ZONE).toInstant(), 600L, 10L, 0L, 15000.0, null);
 
 		EventMonitoring r = assemble(now, metrics.build(), false);
 

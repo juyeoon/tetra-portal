@@ -3,7 +3,6 @@ package com.tetra.portal.monitoring;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -18,6 +17,7 @@ import com.tetra.portal.monitoring.MonitoringResponses.Service;
 import com.tetra.portal.monitoring.MonitoringResponses.Step;
 import com.tetra.portal.monitoring.MonitoringResponses.StepKey;
 import com.tetra.portal.monitoring.MonitoringResponses.StepStatus;
+import com.tetra.portal.result.ResultResponse;
 
 /** 판정 · 계산(명세 2 · 3절). 입력은 Prometheus 원본 값(null 가능), 시각은 호출한 쪽이 준다. */
 final class MonitoringRules {
@@ -97,10 +97,10 @@ final class MonitoringRules {
 	}
 
 	/**
-	 * 최고 동시 접속 = 범위(1분 격자) 값과 지금 값 중 최댓값, 같은 값이면 처음 시각. 값이 하나도 없으면 null.
-	 * 격자 끝은 분 단위로 내려 맞춰 지금 값이 더 클 수 있다.
+	 * 최고 동시 접속 = 1분 칸 값(마지막 칸 = 지금 값) 중 최댓값, 같은 값이면 처음 칸의 분. 값이 하나도 없으면 null.
+	 * 칸 값은 그 분에 수집한 게이지라 결과 탭 peak_at(세션을 만든 분)과 같은 분이 된다.
 	 */
-	static PeakAt peak(List<Long> grid, List<Double> sessions, Double current, Instant at) {
+	static PeakAt peak(List<Long> grid, List<Double> sessions) {
 		PeakAt best = null;
 		for (int i = 0; i < grid.size(); i++) {
 			Long v = count(sessions.get(i));
@@ -108,22 +108,28 @@ final class MonitoringRules {
 				best = new PeakAt(v, Instant.ofEpochMilli(grid.get(i)));
 			}
 		}
-		Long now = count(current);
-		if (now != null && (best == null || now > best.value())) {
-			best = new PeakAt(now, at);
-		}
 		return best;
 	}
 
-	/** 품절 시각 = 남은 재고 추이에서 처음 0이 된 분. 추이에 아직 없고 지금 0이면 지금(분 단위) */
-	static Instant soldOutAt(List<Long> grid, List<Double> stock, Long remainingNow, Instant at) {
+	/**
+	 * 품절 시각 = 남은 재고가 0이 되어 그 뒤로 계속 0인 첫 칸의 분(마지막 칸 = 지금 값). 0 뒤에 다시 양수면(재고를 아직 못 읽은 0 등)
+	 * 그 뒤의 0부터 본다. 모르는 칸(null)은 건너뛴다. 없으면 null
+	 */
+	static Instant soldOutAt(List<Long> grid, List<Double> stock) {
+		Instant at = null;
 		for (int i = 0; i < grid.size(); i++) {
 			Long v = count(stock.get(i));
-			if (v != null && v == 0) {
-				return Instant.ofEpochMilli(grid.get(i));
+			if (v == null) {
+				continue;
+			}
+			if (v > 0) {
+				at = null;
+			}
+			else if (at == null) {
+				at = Instant.ofEpochMilli(grid.get(i));
 			}
 		}
-		return remainingNow != null && remainingNow == 0 ? at.truncatedTo(ChronoUnit.MINUTES) : null;
+		return at;
 	}
 
 	/** 호스팅이 시작된 뒤의 상태 — 전이 로그가 빠져도 상태로 완료를 안다 */
@@ -131,17 +137,19 @@ final class MonitoringRules {
 			HostingStatus.END_FAILED);
 
 	/**
-	 * 진행 단계 5개(2026-10-27 결정). 완료는 실제 기록(hosting_status · event_status + 첫 전이 로그)으로 정한다 — 시각만으로 완료하지 않는다.
-	 * 완료(DONE) · 진행 안 됨(SKIPPED) · 실패(FAILED)가 아닌 첫 단계가 CURRENT, 그 뒤는 UPCOMING.
-	 * 예정 시각이 지났는데 아직이면 delayed(web: 호스팅 시작 · 입장 "확인 중", 종료 "종료 처리 중").
+	 * 진행 단계 5개: 호스팅 시작 → 입장 → 이벤트 진행 → 이벤트 종료(end_at) → 결과 집계(2026-10-28 결정).
+	 * 완료는 실제 기록(hosting_status · event_status + 첫 전이 로그)으로 정한다 — 시각만으로 완료하지 않는다(이벤트 종료는 end_at 시각 = 발급 마감).
+	 * CURRENT는 지금 실제로 진행 중인 단계만 — 앞 단계가 끝났고 그 단계의 시각이 됐을 때. 예정 시각 전 기다리는 구간은 UPCOMING.
+	 * 예정 시각이 지났는데 아직이면 delayed(web "확인 중") — 호스팅 시작 · 입장만.
 	 * UNAVAILABLE(배포 · 호스팅 시작 실패)에는 부르지 않는다(단계 없음).
-	 * - 호스팅 시작: HOSTING 로그 또는 HOSTING · ENDED · END_FAILED면 완료(실제 시각 = 로그)
-	 * - 입장: OPEN이 된 적 있고(OPEN 로그 · 지금 OPEN) 시작 시각이 지났으면 완료. OPEN이면 입장 중(실제 시각 = 로그).
+	 * - 호스팅 시작: HOSTING 로그 또는 HOSTING · ENDED · END_FAILED면 완료(실제 시각 = 로그). 시각이 지났는데 아직이면 현재 + delayed
+	 * - 입장: 입장 시각부터 현재(OPEN이면 입장 중, 아니면 delayed). OPEN이 된 적 있고(OPEN 로그 · 지금 OPEN) 시작 시각이 지났으면 완료.
 	 *   OPEN_FAILED이거나 OPEN이 한 번도 안 된 채 종료면 실패. WF4는 어느 상태에서든 EXPIRED로 바꾸므로 EXPIRED는 OPEN의 증거가 아니다
-	 * - 이벤트 진행: 입장이 끝나면(OPEN 뒤 시작) 현재, 종료 기록(hosting ENDED · event EXPIRED)이 있거나 종료 상태면 완료
-	 * - 종료: 종료 기록이면 완료. hosting_end_at이 지났는데 아직 HOSTING이거나 END_FAILED면 현재 + delayed
-	 * - 결과 집계: 종료 뒤 결과가 준비되면 완료(종료 칸이 끝나면 현재 = 집계 중)
-	 * - OPEN이 한 번도 안 된 채(OPEN_FAILED 포함) 끝난 이벤트: 이벤트 진행 · 종료 · 결과 집계는 SKIPPED(진행 안 됨)
+	 * - 이벤트 진행: 입장이 끝나면(OPEN 뒤 시작) 현재, 종료 상태(end_at · 종료 기록)면 완료
+	 * - 이벤트 종료: 종료 상태면 완료(진행 중인 구간이 없다 — 그 전에는 예정)
+	 * - 결과 집계: 예정 시각 = hosting_end_at. 그 시각이 지났거나 종료 기록(hosting ENDED · event EXPIRED)이 있으면 현재(집계 중),
+	 *   결과가 준비되면 완료, END_FAILED면 실패. end_at ~ hosting_end_at은 기다리는 구간(예정)
+	 * - OPEN이 한 번도 안 된 채(OPEN_FAILED 포함) 끝난 이벤트: 이벤트 진행 · 이벤트 종료 · 결과 집계는 SKIPPED(진행 안 됨)
 	 */
 	static List<Step> steps(MonitoringPhase phase, LocalDateTime now, EventDetail detail) {
 		EventView e = detail.event();
@@ -152,25 +160,25 @@ final class MonitoringRules {
 		boolean entryFailed = !opened && (e.eventStatus() == EventStatus.OPEN_FAILED || ended);
 		boolean endRecorded = e.hostingStatus() == HostingStatus.ENDED || e.eventStatus() == EventStatus.EXPIRED;
 		boolean notRun = ended && !opened;
+		boolean ready = detail.resultState() == ResultResponse.State.READY;
 
-		boolean[] done = { hosted, opened && !now.isBefore(e.startAt()), opened && (endRecorded || ended), endRecorded,
-				ended && detail.resultReady() };
+		boolean[] done = { hosted, opened && !now.isBefore(e.startAt()), opened && ended, ended, ended && ready };
 		boolean[] skipped = { false, false, notRun, notRun, notRun };
-		boolean[] failed = { false, entryFailed, false, false, false };
+		boolean[] failed = { false, entryFailed, false, false, detail.resultState() == ResultResponse.State.END_FAILED };
+		// 앞 단계가 끝났을 때 이 단계가 진행 중인지 — 예정 시각 전(기다리는 구간)은 아니다
+		boolean[] active = { !now.isBefore(e.hostingStartAt()), !now.isBefore(entryAt), true, false,
+				endRecorded || !now.isBefore(e.hostingEndAt()) };
 		boolean[] delayed = { !hosted && !now.isBefore(e.hostingStartAt()),
-				!opened && !entryFailed && !now.isBefore(entryAt), false,
-				!notRun && !endRecorded
-						&& (!now.isBefore(e.hostingEndAt()) || e.hostingStatus() == HostingStatus.END_FAILED),
-				false };
-		LocalDateTime[] at = { e.hostingStartAt(), entryAt, e.startAt(), e.hostingEndAt(), null };
+				!opened && !entryFailed && !now.isBefore(entryAt), false, false, false };
+		LocalDateTime[] at = { e.hostingStartAt(), entryAt, e.startAt(), e.endAt(), e.hostingEndAt() };
 		LocalDateTime[] actualAt = { detail.hostingStartedAt(), detail.openedAt(), null, null, null };
 		StepKey[] keys = StepKey.values();
 		List<Step> steps = new ArrayList<>(keys.length);
-		boolean currentTaken = false;
+		boolean previousDone = true;
 		for (int i = 0; i < keys.length; i++) {
 			StepStatus status = skipped[i] ? StepStatus.SKIPPED : done[i] ? StepStatus.DONE
-					: failed[i] ? StepStatus.FAILED : currentTaken ? StepStatus.UPCOMING : StepStatus.CURRENT;
-			currentTaken |= !done[i] && !skipped[i];
+					: failed[i] ? StepStatus.FAILED : previousDone && active[i] ? StepStatus.CURRENT : StepStatus.UPCOMING;
+			previousDone = status == StepStatus.DONE;
 			steps.add(new Step(keys[i], Kst.toOffset(at[i]), Kst.toOffset(actualAt[i]), status, delayed[i]));
 		}
 		return steps;

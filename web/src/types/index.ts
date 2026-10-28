@@ -186,13 +186,17 @@ export interface PortalSettings {
 /* ---------- 모니터링 (UI-TP-11) — api MonitoringResponses와 같은 모양 ---------- */
 
 /**
- * BEFORE_ENTRY 입장 전 · ENTRY_OPEN 입장 ~ 시작 · LIVE 진행 중 · SOLD_OUT 품절 · ENDED 종료(hosting_end_at) ·
+ * BEFORE_ENTRY 입장 전 · ENTRY_OPEN 입장 ~ 시작 · LIVE 진행 중 · SOLD_OUT 품절 · ENDED 종료(이벤트 종료 end_at) ·
  * UNAVAILABLE 열리지 않음(배포 · 호스팅 시작 실패 — 목록에 없고 상세는 빈 상태)
  */
 export type MonitoringPhase = 'BEFORE_ENTRY' | 'ENTRY_OPEN' | 'LIVE' | 'SOLD_OUT' | 'ENDED' | 'UNAVAILABLE';
 export type MonitoringGroup = 'LIVE' | 'TODAY' | 'ENDED';
+/** END = 이벤트 종료(end_at). 호스팅 종료는 단계가 아니다(결과 집계 칸의 예정 시각) */
 export type MonitoringStepKey = 'HOSTING_START' | 'ENTRY' | 'LIVE' | 'END' | 'AGGREGATE';
-/** FAILED는 입장만(OPEN_FAILED · 열리지 않은 채 종료). SKIPPED = 진행 안 됨(열리지 않은 채 끝난 이벤트의 진행 · 종료 · 집계) */
+/**
+ * CURRENT는 지금 실제로 진행 중인 단계만(예정 시각 전 기다리는 구간은 UPCOMING).
+ * FAILED는 입장(OPEN_FAILED · 열리지 않은 채 종료) · 결과 집계(END_FAILED). SKIPPED = 진행 안 됨(열리지 않은 채 끝난 이벤트의 진행 · 종료 · 집계)
+ */
 export type MonitoringStepStatus = 'DONE' | 'CURRENT' | 'UPCOMING' | 'FAILED' | 'SKIPPED';
 /** 서비스 표시 — 정상 · 지연 중 · 확인 중 */
 export type MonitoringService = 'NORMAL' | 'DELAYED' | 'CHECKING';
@@ -206,7 +210,8 @@ export interface MonitoringEventItem {
   prepareFailed: boolean;
   entryAt: string;
   startAt: string;
-  hostingEndAt: string;
+  /** 이벤트 종료(end_at) */
+  endAt: string;
 }
 
 export interface MonitoringEventList {
@@ -217,12 +222,12 @@ export interface MonitoringEventList {
 
 export interface MonitoringStep {
   step: MonitoringStepKey;
-  /** 예정 시각. AGGREGATE는 null */
+  /** 예정 시각. 이벤트 종료 = end_at, 결과 집계 = hosting_end_at('HH:mm 이후 집계') */
   at: string | null;
   /** 실제 시각(처음 HOSTING · OPEN이 된 시각) — 호스팅 시작 · 입장만, 아직이거나 로그가 없으면 null */
   actualAt: string | null;
   status: MonitoringStepStatus;
-  /** 예정 시각이 지났는데 아직 — 호스팅 시작 · 입장(HOSTING · OPEN 전), 종료(WF4 결과 전 · END_FAILED) */
+  /** 예정 시각이 지났는데 아직 — 호스팅 시작 · 입장만(HOSTING · OPEN 전) */
   delayed: boolean;
 }
 
@@ -241,14 +246,18 @@ export interface MonitoringKpi {
 }
 
 export interface MonitoringSeries {
-  /** t까지 1분 동안 (입장 ~ 지금) */
+  /** 1분 칸(입장 분 ~ 지금 분). t = 구간 시작(결과 탭과 같은 분), 마지막 칸은 지금까지. 값은 정수(칸을 더하면 누적) */
   perMinute: { t: string; entries: number | null; success: number | null; soldOut: number | null }[];
+  /** perMinute와 같은 칸 — 그 분에 읽은 남은 재고(마지막 칸 = 지금 값) */
   stock: { t: string; remaining: number | null }[];
   /** 소진 예상 — 시작 5분 뒤부터, 품절 전 */
   projection: { at: string } | null;
 }
 
-/** GET /monitoring/events/{id}. kpi · series는 ENTRY_OPEN · LIVE · SOLD_OUT에서만 */
+/**
+ * GET /monitoring/events/{id}. kpi · series는 ENTRY_OPEN · LIVE · SOLD_OUT에서만.
+ * 종료(ENDED)도 결과 집계가 끝날 때까지 다시 부른다 — 진행 단계만 바뀐다(Prometheus 조회 없음)
+ */
 export interface EventMonitoring {
   eventId: number;
   name: string;
@@ -260,8 +269,10 @@ export interface EventMonitoring {
   lastUpdatedAt: string | null;
   /** 남은 시간 계산 기준(브라우저 시계를 쓰지 않는다) */
   serverTime: string;
+  /** endAt = 이벤트 종료(상태 · 남은 시간 기준), hostingEndAt = 호스팅 종료(결과 집계 칸) */
   period: { hostingStartAt: string; entryAt: string; startAt: string; endAt: string; hostingEndAt: string; domain: string | null };
   steps: MonitoringStep[];
+  /** endsInSec = endAt까지. soldOutAt = 품절(남은 재고가 0이 된 분) · 종료(결과 준비 뒤 마지막 발급 성공 분, 품절이 아니면 null) */
   header: { endsInSec: number | null; soldOutAt: string | null; service: MonitoringService | null };
   kpi: MonitoringKpi | null;
   series: MonitoringSeries | null;
