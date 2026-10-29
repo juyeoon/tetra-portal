@@ -2,23 +2,23 @@ import { useEffect, useRef, useState } from 'react';
 import { Link as RouterLink, useSearchParams } from 'react-router-dom';
 import { Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import EventAvailableOutlinedIcon from '@mui/icons-material/EventAvailableOutlined';
-import EventBusyOutlinedIcon from '@mui/icons-material/EventBusyOutlined';
 import HourglassEmptyRoundedIcon from '@mui/icons-material/HourglassEmptyRounded';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
-import { getEventMonitoring, listMonitoringEvents } from '@/api/portal';
+import { getEventMonitoring, listEvents, listMonitoringEvents } from '@/api/portal';
 import { usePolling } from '@/api/usePolling';
 import { ErrorView, LoadingView } from '@/components/common/LoadState';
 import SectionTitle from '@/components/common/SectionTitle';
 import StateMessage from '@/components/common/StateMessage';
 import PageHeader from '@/components/layout/PageHeader';
 import { font, size, text } from '@/theme/theme';
+import { eventChipsOf } from '@/utils/status';
 import IntegrationCheck from './components/IntegrationCheck';
 import KpiCards from './components/KpiCards';
 import PerMinuteChart from './components/PerMinuteChart';
 import ProgressCard from './components/ProgressCard';
 import StockChart from './components/StockChart';
-import { POLL_INTERVAL_MS, TEXT, boundaryToRefetch, estimateNow, periodText, pickEventId, pollingDone, selectOptions, showsMetrics } from './monitoringView';
+import { POLL_INTERVAL_MS, TEXT, boundaryToRefetch, estimateNow, periodText, pickEventId, placeholderOf, pollingDone, selectOptions, showsMetrics } from './monitoringView';
 
 /** 1초마다 다시 그린다 — 남은 시간 · 경계 시각 확인용 */
 function useSecondTick() {
@@ -43,6 +43,8 @@ export default function MonitoringPage() {
   const [selected, setSelected] = useState<number | null>(null);
   const [needPick, setNeedPick] = useState(true);
   const list = usePolling(listMonitoringEvents, [], { intervalMs: POLL_INTERVAL_MS });
+  // 드롭다운 확인 중 판정용 — 목록 응답에 호스팅 · 이벤트 상태가 없어 이벤트 내역 목록을 같이 받는다(실패해도 시각 문구로)
+  const statuses = usePolling(listEvents, [], { intervalMs: POLL_INTERVAL_MS });
   const detail = usePolling(() => getEventMonitoring(selected!), [selected], {
     intervalMs: POLL_INTERVAL_MS,
     enabled: selected !== null,
@@ -125,7 +127,8 @@ export default function MonitoringPage() {
   const delayed = m != null && (m.stale || failed);
   const today = m ? nowMs : Date.now();
   // 목록에 없는 이벤트(URL로 직접 · 종료 7일 경과 · 열리지 않게 됨)는 현황 응답으로 항목을 만든다 — 응답 전에는 선택을 비워 둔다
-  const options = selectOptions(events, selected, m, today);
+  const checkingIds = new Set((statuses.data ?? []).filter((e) => eventChipsOf(e, e, today).checking).map((e) => e.eventId));
+  const options = selectOptions(events, selected, m, today, checkingIds);
   const value = selected !== null && options.some((o) => o.eventId === selected) ? selected : '';
 
   return (
@@ -163,8 +166,8 @@ export default function MonitoringPage() {
       {!m ? (
         failed ? <ErrorView message={detail.error!.message} onRetry={detail.refresh} /> : <LoadingView />
       ) : m.state === 'UNAVAILABLE' ? (
-        // 배포 · 호스팅 시작 실패 — 진행 단계 · 지표 없이 안내만. 15초 갱신은 계속(재실행으로 회복되면 바로 보인다)
-        <StateMessage icon={<EventBusyOutlinedIcon />} tone="grey" title={TEXT.unavailable} description={TEXT.unavailableDescription}>
+        // 배포 · 호스팅 시작 실패 — 진행 단계 · 지표 없이 확인 중 안내만. 15초 갱신은 계속(재실행으로 회복되면 바로 보인다)
+        <StateMessage icon={<HourglassEmptyRoundedIcon />} tone="amber" title={TEXT.unavailable} description={TEXT.unavailableDescription}>
           <Button component={RouterLink} to={`/events/${m.eventId}`} variant="contained" sx={{ mt: 2 }}>
             이벤트 내역
           </Button>
@@ -195,7 +198,7 @@ export default function MonitoringPage() {
               </Button>
             </StateMessage>
           ) : (
-            <StateMessage icon={<HourglassEmptyRoundedIcon />} tone="grey" title={TEXT.beforeEntry} />
+            <StateMessage icon={<HourglassEmptyRoundedIcon />} {...placeholderOf(m)} />
           )}
 
           {/* 근사값 안내 — 수치가 보일 때만(종료 · 입장 전은 위 안내가 대신한다) */}

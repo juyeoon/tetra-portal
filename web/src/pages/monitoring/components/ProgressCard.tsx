@@ -19,7 +19,7 @@ const segment = (reached: boolean) =>
 function Dot({ status }: { status: MonitoringStepStatus }) {
   const base = { width: 12, height: 12, borderRadius: '50%', flexShrink: 0, boxSizing: 'border-box' as const };
   if (status === 'DONE') return <Box sx={{ ...base, bgcolor: color.navy }} />;
-  // 실패(입장 · 결과 집계)는 주황 — 빨강은 쓰지 않는다. 진행 안 됨은 점선 테두리
+  // 실패(입장 · 결과 집계)는 확인 중 — 황토, 빨강은 쓰지 않는다. 진행 안 됨은 점선 테두리
   if (status === 'FAILED') return <Box sx={{ ...base, bgcolor: tones.amber.dot }} />;
   if (status === 'SKIPPED') return <Box sx={{ ...base, bgcolor: color.white, border: `2px dashed ${line.strong}` }} />;
   if (status === 'CURRENT') return <Box sx={{ ...base, width: 14, height: 14, bgcolor: color.white, border: `2.5px solid ${color.navy}` }} />;
@@ -80,7 +80,7 @@ export default function ProgressCard({ m, nowMs, delayed }: ProgressCardProps) {
           ))}
       </Stack>
 
-      {/* 준비 실패 · 지연 중 안내 — 빨강은 쓰지 않는다 */}
+      {/* 준비 실패(확인 중) · 지연 중 안내 — 빨강은 쓰지 않는다 */}
       {m.prepareFailed && m.state !== 'ENDED' && (
         <Typography variant="body2" sx={{ mt: 1.5, color: tones.amber.fg, fontWeight: font.weight.semibold }}>
           {TEXT.prepareFailed}

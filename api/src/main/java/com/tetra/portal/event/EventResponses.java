@@ -62,7 +62,8 @@ public final class EventResponses {
 	}
 
 	public record LogItem(StatusType statusType, String prevStatus, String newStatus, OffsetDateTime changedAt,
-			@Schema(description = "원인 · 사유 (실패 원인 등)") String detail, Actor actor) {
+			@Schema(description = "원인 · 사유 — 신청 기록만(반려 사유 · 신청 실패 원인). 호스팅 · 이벤트 기록은 null") String detail,
+			Actor actor) {
 	}
 
 }

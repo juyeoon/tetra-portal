@@ -11,6 +11,7 @@ import {
   estimateNow,
   detailCaption,
   headlineOf,
+  isCheckingMonitoring,
   isTick,
   itemCaption,
   kstIso,
@@ -19,6 +20,7 @@ import {
   periodText,
   perMinuteSubtitle,
   pickEventId,
+  placeholderOf,
   pollingDone,
   refreshStatus,
   rejectChip,
@@ -31,6 +33,7 @@ import {
   stepCaption,
   stockChart,
   stockSubtitle,
+  TEXT,
   tickMinutes,
   waitText,
 } from './monitoringView.ts';
@@ -154,10 +157,10 @@ describe('진행 단계 카드', () => {
     assert.deepEqual(headlineOf(monitoring({ state: 'ENDED' }), ms('2026-10-28T09:00:00+09:00')), { label: '종료', value: '10-27 15:40' });
   });
 
-  test('준비 실패로 입장 시각이 지났으면 입장 지연 · 예정 시각, 지나기 전이면 평소 문구', () => {
+  test('준비 실패로 입장 시각이 지났으면 확인 중 · 입장 예정, 지나기 전이면 평소 문구', () => {
     const failed = monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true });
-    assert.deepEqual(headlineOf(failed, ms('2026-10-27T14:20:00+09:00')), { label: '입장 지연', value: '예정 시각 14:00', delayed: true });
-    assert.deepEqual(headlineOf(failed, ms('2026-10-27T14:00:00+09:00')), { label: '입장 지연', value: '예정 시각 14:00', delayed: true });
+    assert.deepEqual(headlineOf(failed, ms('2026-10-27T14:20:00+09:00')), { label: '확인 중', value: '입장 예정 14:00', delayed: true });
+    assert.deepEqual(headlineOf(failed, ms('2026-10-27T14:00:00+09:00')), { label: '확인 중', value: '입장 예정 14:00', delayed: true });
     assert.deepEqual(headlineOf(failed, ms('2026-10-27T13:59:00+09:00')), { label: '입장까지', value: '1분 0초', note: '14:00 입장' });
   });
 
@@ -210,12 +213,12 @@ describe('진행 단계 카드', () => {
     assert.equal(stepCaption(step('ENTRY', 'CURRENT', open.period.entryAt, { delayed: true }), open, ms('2026-10-27T14:05:00+09:00')), '확인 중');
   });
 
-  test('입장 실패는 입장 지연 — 입장 시각 전후 · 종료 뒤 모두', () => {
+  test('입장 실패는 확인 중 — 입장 시각 전후 · 종료 뒤 모두', () => {
     const failed = monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true });
     const entry = step('ENTRY', 'FAILED', failed.period.entryAt);
-    assert.equal(stepCaption(entry, failed, ms('2026-10-27T14:20:00+09:00')), '입장 지연');
-    assert.equal(stepCaption(entry, failed, ms('2026-10-27T13:50:00+09:00')), '입장 지연');
-    assert.equal(stepCaption(entry, monitoring({ state: 'ENDED' }), ms('2026-10-27T16:00:00+09:00')), '입장 지연');
+    assert.equal(stepCaption(entry, failed, ms('2026-10-27T14:20:00+09:00')), '확인 중');
+    assert.equal(stepCaption(entry, failed, ms('2026-10-27T13:50:00+09:00')), '확인 중');
+    assert.equal(stepCaption(entry, monitoring({ state: 'ENDED' }), ms('2026-10-27T16:00:00+09:00')), '확인 중');
   });
 
   test('이벤트 진행 — 진행 중 · 품절 시각, 종료 뒤 시작 · 종료(end_at) 또는 품절', () => {
@@ -234,14 +237,14 @@ describe('진행 단계 카드', () => {
     assert.equal(stepCaption(step('END', 'DONE', ended.period.endAt), ended, ms('2026-10-27T15:42:00+09:00')), '15:40 완료');
   });
 
-  test('결과 집계 — 호스팅 종료 전 이후 집계 · WF4 · 집계 중 · 완료, 실패는 집계 지연', () => {
+  test('결과 집계 — 호스팅 종료 전 이후 집계 · WF4 · 집계 중 · 완료, 실패는 확인 중', () => {
     const ended = monitoring({ state: 'ENDED' });
     const now = ms('2026-10-27T15:42:00+09:00');
     assert.equal(stepCaption(step('AGGREGATE', 'UPCOMING', ended.period.hostingEndAt), monitoring(), ms(NOW)), '15:45 이후 집계');
     assert.equal(stepCaption(step('AGGREGATE', 'UPCOMING', ended.period.hostingEndAt), ended, now), '15:45 이후 집계');
     assert.equal(stepCaption(step('AGGREGATE', 'CURRENT', ended.period.hostingEndAt), ended, now), '집계 중');
     assert.equal(stepCaption(step('AGGREGATE', 'DONE', ended.period.hostingEndAt), ended, now), '완료');
-    assert.equal(stepCaption(step('AGGREGATE', 'FAILED', ended.period.hostingEndAt), ended, now), '집계 지연');
+    assert.equal(stepCaption(step('AGGREGATE', 'FAILED', ended.period.hostingEndAt), ended, now), '확인 중');
   });
 
   test('열리지 않은 채 끝난 이벤트의 진행 · 종료 · 결과 집계는 진행 안 됨(집계 중으로 남지 않는다)', () => {
@@ -288,10 +291,10 @@ describe('칩 · 갱신 문구', () => {
     assert.equal(rejectChip(null), null);
   });
 
-  test('갱신 문구 — 평소 · 데이터 지연(마지막 정상 조회 시각) · 종료는 없음', () => {
+  test('갱신 문구 — 평소 · 데이터 지연은 확인 중(마지막 정상 조회 시각) · 종료는 없음', () => {
     assert.deepEqual(refreshStatus(monitoring(), false), { text: '15초마다 자동 갱신 · 마지막 15:12:14', delayed: false });
     assert.deepEqual(refreshStatus(monitoring({ stale: true, lastUpdatedAt: '2026-10-27T15:11:44+09:00' }), true), {
-      text: '데이터 지연 · 마지막 15:11:44',
+      text: '확인 중 · 마지막 15:11:44',
       delayed: true,
     });
     // 입장 전은 Prometheus를 읽지 않아 lastUpdatedAt이 없다 → 응답 시각
@@ -334,11 +337,11 @@ describe('드롭다운', () => {
     assert.equal(pickEventId({ events: [], defaultEventId: null }, null), null);
   });
 
-  const unavailable = monitoring({ eventId: 12, name: '배포 실패 이벤트', state: 'UNAVAILABLE', steps: [], kpi: null, series: null });
+  const unavailable = monitoring({ eventId: 12, name: '겨울 이벤트', state: 'UNAVAILABLE', steps: [], kpi: null, series: null });
 
-  test('목록에 없는 이벤트를 보고 있으면 현황 응답으로 맨 위에 항목 — 열리지 않은 이벤트는 모니터링 불가', () => {
+  test('목록에 없는 이벤트를 보고 있으면 현황 응답으로 맨 위에 항목 — 열리지 않은 이벤트는 확인 중', () => {
     assert.deepEqual(selectOptions(list.events, 12, unavailable, ms(NOW)), [
-      { eventId: 12, label: '배포 실패 이벤트 · 모니터링 불가' },
+      { eventId: 12, label: '겨울 이벤트 · 확인 중' },
       { eventId: 7, label: '가을 감사 · 진행 중' },
       { eventId: 9, label: '가을 감사 · 종료 10-27' },
     ]);
@@ -347,16 +350,42 @@ describe('드롭다운', () => {
     assert.equal(selectOptions(list.events, 12, monitoring({ eventId: 7 }), ms(NOW)).length, 2);
   });
 
-  test('보는 중 열리지 않게 됐는데 목록이 아직 옛 값이면 그 항목만 모니터링 불가', () => {
+  test('보는 중 열리지 않게 됐는데 목록이 아직 옛 값이면 그 항목만 확인 중', () => {
     const now7 = monitoring({ eventId: 7, state: 'UNAVAILABLE' });
-    assert.deepEqual(selectOptions(list.events, 7, now7, ms(NOW)).map((o) => o.label), ['가을 감사 · 모니터링 불가', '가을 감사 · 종료 10-27']);
+    assert.deepEqual(selectOptions(list.events, 7, now7, ms(NOW)).map((o) => o.label), ['가을 감사 · 확인 중', '가을 감사 · 종료 10-27']);
   });
 
   test('목록에서 빠진 지난 이벤트는 현황 상태로 문구', () => {
     const old = monitoring({ eventId: 30, name: '여름 이벤트', state: 'ENDED', period: { ...monitoring().period, endAt: '2026-10-10T15:40:00+09:00' } });
     assert.equal(detailCaption(old, ms(NOW)), '종료 10-10');
     assert.equal(detailCaption(monitoring({ state: 'ENTRY_OPEN' }), ms(NOW)), '입장 중');
-    assert.equal(detailCaption(unavailable, ms(NOW)), '모니터링 불가');
+    assert.equal(detailCaption(unavailable, ms(NOW)), '확인 중');
+  });
+
+  test('확인 중이면 시각 문구 대신 확인 중 — 보고 있는 이벤트는 현황 응답, 나머지는 이벤트 내역 판정(checkingIds)', () => {
+    const events = [
+      item({ eventId: 2, name: '입장 시각 지남', state: 'ENTRY_OPEN' }),
+      item({ eventId: 4, name: '입장 준비', group: 'TODAY', state: 'BEFORE_ENTRY', prepareFailed: true, startAt: '2026-10-27T18:00:00+09:00' }),
+      item({ eventId: 7 }),
+    ];
+    const labels = (selected: number, m: EventMonitoring, checkingIds?: ReadonlySet<number>) =>
+      selectOptions(events, selected, m, ms(NOW), checkingIds).map((o) => o.label);
+    // 입장 시각이 지났는데 열리지 않음(배포 완료 · 오픈 예정) — 현황의 호스팅 시작 · 입장 단계가 delayed. '입장 중'이 아니다
+    const notOpened = monitoring({
+      eventId: 2,
+      state: 'ENTRY_OPEN',
+      steps: [step('HOSTING_START', 'CURRENT', '2026-10-27T13:20:00+09:00', { delayed: true }), step('ENTRY', 'UPCOMING', '2026-10-27T14:00:00+09:00', { delayed: true })],
+    });
+    assert.deepEqual(labels(2, notOpened), ['입장 시각 지남 · 확인 중', '입장 준비 · 오늘 18:00 시작', '가을 감사 · 진행 중']);
+    // 준비 실패를 보고 있으면 '오늘 HH:mm 시작'이 아니라 확인 중
+    const prepareFailed = monitoring({ eventId: 4, state: 'BEFORE_ENTRY', prepareFailed: true, steps: [step('ENTRY', 'FAILED', '2026-10-27T14:00:00+09:00')] });
+    assert.equal(labels(4, prepareFailed)[1], '입장 준비 · 확인 중');
+    // 보고 있지 않은 이벤트는 checkingIds(이벤트 내역 eventChipsOf)로
+    assert.deepEqual(labels(7, monitoring(), new Set([2, 4])), ['입장 시각 지남 · 확인 중', '입장 준비 · 확인 중', '가을 감사 · 진행 중']);
+    // 보고 있는 이벤트는 현황 응답이 먼저 — 정상이면 checkingIds에 있어도 시각 문구
+    assert.equal(labels(7, monitoring(), new Set([7]))[2], '가을 감사 · 진행 중');
+    // 목록에 없는 이벤트를 보고 있을 때도 같은 판정
+    assert.equal(detailCaption(prepareFailed, ms(NOW)), '확인 중');
   });
 });
 
@@ -508,5 +537,38 @@ describe('그래프', () => {
     assert.equal(stockSubtitle(monitoring({ series: { perMinute: [], stock: [], projection: null } }), ms(NOW)), '지금 5,460개');
     assert.equal(stockSubtitle(monitoring({ kpi: { ...monitoring().kpi!, issued: null } }), ms(NOW)), '지금 - · 최근 5분 속도면 15:21쯤 소진');
     assert.equal(stockSubtitle(monitoring({ state: 'SOLD_OUT', header: { endsInSec: 1, soldOutAt: t('15:09'), service: 'NORMAL' } }), ms(NOW)), '15:09 품절');
+  });
+});
+
+describe('고객 문구', () => {
+  // 실패 · 원인 대신 확인 중(2026-10-29). 입장 실패(JWT)는 고객사 설정 문제라 그대로 보여 준다
+  test('안내 문구에 실패 · 문제 · 불가 같은 말이 없다', () => {
+    for (const [key, text] of Object.entries(TEXT)) {
+      if (key === 'rejectsDescription') continue;
+      assert.doesNotMatch(text, /실패|오류|문제|불가|열리지 않/, key);
+    }
+  });
+});
+
+describe('확인 중 판정 · 카드 자리 안내', () => {
+  const at = '2026-10-27T14:00:00+09:00';
+
+  test('현황 응답으로 확인 중 — 열리지 않음 · 준비 실패 · 실패한 단계 · 예정 시각이 지났는데 아직인 단계', () => {
+    assert.equal(isCheckingMonitoring(monitoring({ steps: [step('HOSTING_START', 'DONE', at), step('ENTRY', 'DONE', at), step('LIVE', 'CURRENT', at)] })), false);
+    assert.equal(isCheckingMonitoring(monitoring({ state: 'UNAVAILABLE' })), true);
+    assert.equal(isCheckingMonitoring(monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true })), true);
+    assert.equal(isCheckingMonitoring(monitoring({ state: 'BEFORE_ENTRY', steps: [step('HOSTING_START', 'CURRENT', at, { delayed: true })] })), true);
+    assert.equal(isCheckingMonitoring(monitoring({ state: 'ENTRY_OPEN', steps: [step('ENTRY', 'UPCOMING', at, { delayed: true })] })), true);
+    assert.equal(isCheckingMonitoring(monitoring({ state: 'ENDED', steps: [step('AGGREGATE', 'FAILED', at)] })), true);
+    assert.equal(isCheckingMonitoring(monitoring({ state: 'ENDED', steps: [step('AGGREGATE', 'DONE', at)] })), false);
+  });
+
+  test('카드 자리 — 확인 중(준비 실패 등)이면 운영팀 안내(황토), 아니면 입장 시각 안내(회색)', () => {
+    assert.deepEqual(placeholderOf(monitoring({ state: 'BEFORE_ENTRY', prepareFailed: true })), { title: '운영팀이 확인하고 있어요', tone: 'amber' });
+    assert.deepEqual(placeholderOf(monitoring({ state: 'BEFORE_ENTRY', steps: [step('HOSTING_START', 'CURRENT', at, { delayed: true })] })), {
+      title: '운영팀이 확인하고 있어요',
+      tone: 'amber',
+    });
+    assert.deepEqual(placeholderOf(monitoring({ state: 'BEFORE_ENTRY' })), { title: '입장 시각부터 데이터가 보여요', tone: 'grey' });
   });
 });

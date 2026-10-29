@@ -115,6 +115,35 @@ class EventQueryApiTest extends IntegrationTest {
 	}
 
 	@Test
+	void logDetailIsSentOnlyForApplicationLogs() throws Exception {
+		data.tenant(A, "A사", "ACTIVE", "READY");
+		// 신청 실패 원인 · 반려 사유는 고객이 볼 내용 — 그대로
+		data.event(1001, A).status("APPLY_FAILED").insert();
+		data.statusLog(A, 1001, "APPLICATION", "APPLYING", "APPLY_FAILED", TestData.BASE, "배너 업로드 실패", null);
+		data.event(1002, A).rejected("기간이 너무 짧습니다").insert();
+		data.statusLog(A, 1002, "APPLICATION", "APPLIED", "REJECTED", TestData.BASE, "기간이 너무 짧습니다", 1L);
+		// 호스팅 · 이벤트 실패 원인은 워크플로 실행 오류 원문 — 내리지 않는다(상태 값은 그대로)
+		data.event(1003, A).approved("DEPLOY_FAILED", "SCHEDULED", "fail2345").insert();
+		data.statusLog(A, 1003, "HOSTING", "PENDING", "DEPLOY_FAILED", TestData.BASE, "FAILED: States.TaskFailed / gitops", null);
+		data.statusLog(A, 1003, "EVENT", "SCHEDULED", "OPEN_FAILED", TestData.BASE.plusHours(1), "TIMED_OUT", null);
+
+		mvc.perform(get("/api/portal/events/{id}", 1001).cookie(loginCookie(A)))
+			.andExpect(jsonPath("$.logs[0].detail").value("배너 업로드 실패"));
+		mvc.perform(get("/api/portal/events/{id}", 1002).cookie(loginCookie(A)))
+			.andExpect(jsonPath("$.logs[0].detail").value("기간이 너무 짧습니다"));
+		String body = mvc.perform(get("/api/portal/events/{id}", 1003).cookie(loginCookie(A)))
+			.andExpect(jsonPath("$.status.hostingStatus").value("DEPLOY_FAILED"))
+			.andExpect(jsonPath("$.logs[0].newStatus").value("DEPLOY_FAILED"))
+			.andExpect(jsonPath("$.logs[0].detail").value(nullValue()))
+			.andExpect(jsonPath("$.logs[1].newStatus").value("OPEN_FAILED"))
+			.andExpect(jsonPath("$.logs[1].detail").value(nullValue()))
+			.andReturn()
+			.getResponse()
+			.getContentAsString();
+		assertThat(body).doesNotContain("States.TaskFailed").doesNotContain("TIMED_OUT");
+	}
+
+	@Test
 	void otherTenantsEventIsNotFound() throws Exception {
 		data.tenant(A, "A사", "ACTIVE", "READY");
 		data.tenant(B, "B사", "ACTIVE", "READY");
