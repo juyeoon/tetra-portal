@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { StatusLog } from '../../types/index.ts';
-import { timelineOf } from './statusLogView.ts';
+import { STATUS_LOG_TEXT, timelineOf } from './statusLogView.ts';
 
 const START_AT = '2026-10-24T13:00:00+09:00';
 const APPLICANT = '김담당';
@@ -52,8 +52,8 @@ describe('timelineOf: 이벤트 시작 항목', () => {
   });
 
   test('같은 시각이면 로그 뒤 · 시각순 정렬', () => {
-    const sameTime = [...OPENED_LOGS, log(START_AT, 'HOSTING', 'END_FAILED', 'SYSTEM', '정리 실패')];
-    assert.deepEqual(timelineOf(sameTime, START_AT, new Date(START_AT), APPLICANT).slice(-2).map((l) => l.title), ['종료 실패', '이벤트 시작']);
+    const sameTime = [...OPENED_LOGS, log(START_AT, 'HOSTING', 'END_FAILED')];
+    assert.deepEqual(timelineOf(sameTime, START_AT, new Date(START_AT), APPLICANT).slice(-2).map((l) => l.title), ['종료 처리 확인 중', '이벤트 시작']);
     const later = [...OPENED_LOGS, log('2026-10-24T15:00:00+09:00', 'EVENT', 'EXPIRED')];
     assert.deepEqual(timelineOf(later, START_AT, new Date('2026-10-24T16:00:00+09:00'), APPLICANT).slice(-2).map((l) => l.title), ['이벤트 시작', '이벤트 만료']);
   });
@@ -88,5 +88,43 @@ describe('timelineOf: 문구 · 입장 시각', () => {
     assert.deepEqual(items[1].detail, { label: '반려 사유', text: '배너 이미지가 정책에 맞지 않습니다.', rejected: true });
     assert.equal(items[2].title, 'SOMETHING_NEW');
     assert.equal(items[2].description, '');
+  });
+});
+
+describe('실패 기록은 확인 중', () => {
+  // 고객 화면은 실패 대신 확인 중(2026-10-29). 호스팅 · 이벤트 기록의 원인은 서버가 내리지 않는다(detail null)
+  test('배포 · 호스팅 시작 · 입장 준비 · 종료 실패는 확인 중 칩(황토) + 운영팀 안내, 원인 칸 없음', () => {
+    const failures = [
+      log('2026-10-23T09:40:00+09:00', 'HOSTING', 'DEPLOY_FAILED'),
+      log('2026-10-24T11:00:00+09:00', 'HOSTING', 'HOSTING_FAILED'),
+      log('2026-10-24T12:00:00+09:00', 'EVENT', 'OPEN_FAILED'),
+      log('2026-10-24T16:00:00+09:00', 'HOSTING', 'END_FAILED'),
+    ];
+    const items = timelineOf(failures, START_AT, new Date(START_AT), APPLICANT);
+    assert.deepEqual(
+      items.map((l) => l.title),
+      ['배포 확인 중', '호스팅 시작 확인 중', '입장 준비 확인 중', '종료 처리 확인 중'],
+    );
+    for (const item of items) {
+      assert.deepEqual(item.status, { label: '확인 중', tone: 'amber' });
+      assert.equal(item.description, '운영팀이 확인하고 있습니다.');
+      assert.equal(item.detail, null);
+    }
+  });
+
+  test('호스팅 · 이벤트 문구에 실패 · 오류 같은 말이 없다', () => {
+    for (const type of ['HOSTING', 'EVENT'] as const) {
+      for (const [status, text] of Object.entries(STATUS_LOG_TEXT[type])) {
+        assert.doesNotMatch(`${text.title} ${text.description}`, /실패|오류|지연/, `${type} ${status}`);
+      }
+    }
+  });
+
+  test('신청 기록의 반려 사유 · 신청 실패 원인은 그대로 보여 준다', () => {
+    const [rejected] = timelineOf([log('2026-10-23T09:30:00+09:00', 'APPLICATION', 'REJECTED', 'OPERATOR', '기간이 너무 짧습니다')], START_AT, new Date(START_AT), APPLICANT);
+    assert.deepEqual(rejected.detail, { label: '반려 사유', text: '기간이 너무 짧습니다', rejected: true });
+    const [failed] = timelineOf([log('2026-10-23T09:30:00+09:00', 'APPLICATION', 'APPLY_FAILED', 'SYSTEM', '배너 업로드 실패')], START_AT, new Date(START_AT), APPLICANT);
+    assert.equal(failed.title, '신청 실패');
+    assert.deepEqual(failed.detail, { label: '원인', text: '배너 업로드 실패', rejected: false });
   });
 });

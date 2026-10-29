@@ -10,19 +10,20 @@ import com.tetra.portal.domain.HostingStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**
- * UI-TP-06 결과 탭(UI-TP-6-2). Console OPS-04-3 결과 응답과 같은 모양 · 같은 판정 — 두 화면이 같은 숫자를 보여 준다.
+ * UI-TP-06 결과 탭(UI-TP-6-2). Console OPS-04-3 결과 응답과 같은 판정 · 같은 숫자 — 두 화면이 같은 숫자를 보여 준다.
+ * 종료 처리 실패의 원인(Console failure)은 내리지 않는다(2026-10-29 — 고객 화면은 "확인 중").
  * state로 화면이 상태 화면을 고르고, state별로 쓰지 않는 값은 null이다.
  */
 @Schema(name = "EventResult")
 public record ResultResponse(Long eventId, State state, OffsetDateTime eventOpenAt,
 		@Schema(description = "발급 이력 집계 시각 — READY일 때만") OffsetDateTime aggregatedAt, HostingStatus hostingStatus,
 		EventStatus eventStatus, @Schema(description = "이벤트 종료 예정 — IN_PROGRESS일 때만") OffsetDateTime endAt,
-		@Schema(description = "END_FAILED일 때만") Failure failure, @Schema(description = "READY일 때만") Result result) {
+		@Schema(description = "READY일 때만") Result result) {
 
 	/** 위에서부터 먼저 맞는 것 (Console과 같은 순서). */
 	public enum State {
 
-		@Schema(description = "종료 처리 실패 — 결과를 만들지 못함")
+		@Schema(description = "종료 처리 실패 — 결과를 만들지 못함(화면은 확인 중, 원인은 내리지 않음)")
 		END_FAILED,
 		@Schema(description = "결과 · CSV 준비됨")
 		READY,
@@ -31,10 +32,6 @@ public record ResultResponse(Long eventId, State state, OffsetDateTime eventOpen
 		@Schema(description = "아직 진행 전 · 진행 중 (승인 전 신청도 여기)")
 		IN_PROGRESS
 
-	}
-
-	/** 가장 최근 HOSTING → END_FAILED 진행 기록의 detail · changed_at. */
-	public record Failure(String cause, OffsetDateTime occurredAt) {
 	}
 
 	public record Result(Metrics metrics, Composition composition, List<MinuteBucket> perMinute) {

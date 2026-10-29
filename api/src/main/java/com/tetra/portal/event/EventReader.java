@@ -72,7 +72,7 @@ class EventReader {
 		var logs = statusLogs.findByEventIdOrderByChangedAtAscLogIdAsc(eventId)
 			.stream()
 			.map(l -> new EventResponses.LogItem(l.getStatusType(), l.getPrevStatus(), l.getNewStatus(),
-					Kst.toOffset(l.getChangedAt()), l.getDetail(), actor(l)))
+					Kst.toOffset(l.getChangedAt()), detail(l), actor(l)))
 			.toList();
 		return new EventResponses.Detail(e.getEventId(), e.getName(), e.getEventType(), Kst.toOffset(e.getStartAt()),
 				Kst.toOffset(e.getEndAt()), Kst.toOffset(e.getHostingStartAt()), Kst.toOffset(e.getHostingEndAt()),
@@ -81,6 +81,14 @@ class EventReader {
 				new EventResponses.Status(e.getApplicationStatus(), e.getHostingStatus(), e.getEventStatus(),
 						e.getRejectReason(), ResultReader.state(e, summaries.findById(eventId).orElse(null))),
 				couponItems, jsonMapper.readTree(e.getLayoutConfig()), domains.of(e), logs);
+	}
+
+	/**
+	 * 원인 · 사유는 신청 기록만(반려 사유 · 배너 업로드 실패). 호스팅 · 이벤트 기록의 원인은 워크플로 실행 오류 원문이라
+	 * 고객 화면에 내리지 않는다(2026-10-29 — 고객 화면은 실패 대신 "확인 중").
+	 */
+	static String detail(EventStatusLog log) {
+		return log.getStatusType() == StatusType.APPLICATION ? log.getDetail() : null;
 	}
 
 	/** 신청 제출(NULL → APPLYING)만 테넌트, changed_by가 있으면 운영자, 나머지는 시스템. */

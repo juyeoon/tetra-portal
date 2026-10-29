@@ -13,7 +13,7 @@ import PageHeader from '@/components/layout/PageHeader';
 import { font, size, text, type } from '@/theme/theme';
 import type { EventSummary } from '@/types';
 import { formatDate, formatDateRange, formatDateTime } from '@/utils/format';
-import { applicationStatusMeta, eventStatusMeta, hostingStatusMeta } from '@/utils/status';
+import { CHECKING_NOTE, applicationStatusMeta, eventChipsOf } from '@/utils/status';
 
 type SortKey = 'period' | 'appliedAt';
 const sortLabel: Record<SortKey, string> = { period: '이벤트 기간', appliedAt: '신청일' };
@@ -34,6 +34,9 @@ export default function EventListPage() {
     const sorted = [...events].sort((a, b) => get(a).localeCompare(get(b)));
     return sort.dir === 'asc' ? sorted : sorted.reverse();
   }, [events, sort]);
+  // 호스팅 · 이벤트 칸 — 실패했거나 예정 시각이 지났는데 진행되지 않았으면 확인 중
+  const nowMs = Date.now();
+  const anyChecking = events.some((e) => eventChipsOf(e, e, nowMs).checking);
 
   // 같은 헤더를 다시 누르면 오름차순/내림차순 전환
   const toggleSort = (key: SortKey) => setSort((prev) => (prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }));
@@ -78,8 +81,7 @@ export default function EventListPage() {
             <TableBody>
               {rows.map((e) => {
                 const app = applicationStatusMeta[e.applicationStatus];
-                const hosting = e.hostingStatus && hostingStatusMeta[e.hostingStatus];
-                const status = e.eventStatus && eventStatusMeta[e.eventStatus];
+                const { hosting, event: status } = eventChipsOf(e, e, nowMs);
                 return (
                   <TableRow key={e.eventId} hover onClick={() => navigate(`/events/${e.eventId}`)} sx={{ cursor: 'pointer' }}>
                     <TableCell>
@@ -115,6 +117,11 @@ export default function EventListPage() {
             <Typography variant="body2" sx={{ color: text.tertiary }}>
               ※ 승인 전(신청됨·승인 대기·신청 실패·반려됨)에는 호스팅상태와 이벤트상태가 "-"로 표시됩니다.
             </Typography>
+            {anyChecking && (
+              <Typography variant="body2" sx={{ color: text.tertiary }}>
+                ※ "확인 중"인 이벤트는 {CHECKING_NOTE}
+              </Typography>
+            )}
             <Typography variant="body2" sx={{ color: text.tertiary }}>
               ※ 행을 클릭하면 상세 페이지로 이동합니다.
             </Typography>

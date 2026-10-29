@@ -16,16 +16,12 @@ import com.tetra.portal.common.error.ErrorCode;
 import com.tetra.portal.common.time.Kst;
 import com.tetra.portal.domain.EventStatus;
 import com.tetra.portal.domain.HostingStatus;
-import com.tetra.portal.domain.StatusType;
 import com.tetra.portal.domain.platform.TrafficPlanRepository;
 import com.tetra.portal.domain.tenant.Event;
 import com.tetra.portal.domain.tenant.EventRepository;
 import com.tetra.portal.domain.tenant.EventResultSummary;
 import com.tetra.portal.domain.tenant.EventResultSummaryRepository;
-import com.tetra.portal.domain.tenant.EventStatusLog;
-import com.tetra.portal.domain.tenant.EventStatusLogRepository;
 import com.tetra.portal.result.ResultResponse.Composition;
-import com.tetra.portal.result.ResultResponse.Failure;
 import com.tetra.portal.result.ResultResponse.Metrics;
 import com.tetra.portal.result.ResultResponse.MinuteBucket;
 import com.tetra.portal.result.ResultResponse.State;
@@ -46,17 +42,14 @@ public class ResultReader {
 
 	private final EventResultSummaryRepository summaries;
 
-	private final EventStatusLogRepository statusLogs;
-
 	private final TrafficPlanRepository plans;
 
 	private final EntityManager entityManager;
 
-	ResultReader(EventRepository events, EventResultSummaryRepository summaries, EventStatusLogRepository statusLogs,
-			TrafficPlanRepository plans, EntityManager entityManager) {
+	ResultReader(EventRepository events, EventResultSummaryRepository summaries, TrafficPlanRepository plans,
+			EntityManager entityManager) {
 		this.events = events;
 		this.summaries = summaries;
-		this.statusLogs = statusLogs;
 		this.plans = plans;
 		this.entityManager = entityManager;
 	}
@@ -87,13 +80,13 @@ public class ResultReader {
 		var openAt = Kst.toOffset(event.getStartAt());
 		return switch (state(event, summary)) {
 			case END_FAILED -> new ResultResponse(eventId, State.END_FAILED, openAt, null, event.getHostingStatus(),
-					event.getEventStatus(), null, endFailure(eventId), null);
+					event.getEventStatus(), null, null);
 			case READY -> new ResultResponse(eventId, State.READY, openAt, Kst.toOffset(summary.getHistoryGeneratedAt()),
-					event.getHostingStatus(), event.getEventStatus(), null, null, readyResult(event, summary));
+					event.getHostingStatus(), event.getEventStatus(), null, readyResult(event, summary));
 			case AGGREGATING -> new ResultResponse(eventId, State.AGGREGATING, openAt, null, event.getHostingStatus(),
-					event.getEventStatus(), null, null, null);
+					event.getEventStatus(), null, null);
 			case IN_PROGRESS -> new ResultResponse(eventId, State.IN_PROGRESS, openAt, null, event.getHostingStatus(),
-					event.getEventStatus(), Kst.toOffset(event.getEndAt()), null, null);
+					event.getEventStatus(), Kst.toOffset(event.getEndAt()), null);
 		};
 	}
 
@@ -106,15 +99,6 @@ public class ResultReader {
 			return null;
 		}
 		return summary.getHistoryFilePath();
-	}
-
-	private Failure endFailure(Long eventId) {
-		return statusLogs.findByEventIdOrderByChangedAtAscLogIdAsc(eventId)
-			.stream()
-			.filter(l -> l.getStatusType() == StatusType.HOSTING && HostingStatus.END_FAILED.name().equals(l.getNewStatus()))
-			.reduce((first, second) -> second) // 가장 최근
-			.map(l -> new Failure(l.getDetail(), Kst.toOffset(l.getChangedAt())))
-			.orElse(new Failure(null, null));
 	}
 
 	private ResultResponse.Result readyResult(Event event, EventResultSummary summary) {

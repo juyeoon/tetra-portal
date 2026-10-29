@@ -67,7 +67,7 @@ export interface StatusLog {
   prevStatus: string | null;
   newStatus: string;
   changedAt: string;
-  /** 원인 · 사유 (반려 사유, 실패 원인 등) */
+  /** 원인 · 사유 — 신청 기록만(반려 사유, 신청 실패 원인). 호스팅 · 이벤트 기록은 null */
   detail: string | null;
   actor: Actor;
 }
@@ -123,8 +123,6 @@ export interface EventResult {
   eventStatus: EventStatus | null;
   /** IN_PROGRESS일 때만 — 종료 예정 */
   endAt: string | null;
-  /** END_FAILED일 때만 */
-  failure: { cause: string | null; occurredAt: string } | null;
   /** READY일 때만 */
   result: {
     metrics: {
@@ -187,7 +185,7 @@ export interface PortalSettings {
 
 /**
  * BEFORE_ENTRY 입장 전 · ENTRY_OPEN 입장 ~ 시작 · LIVE 진행 중 · SOLD_OUT 품절 · ENDED 종료(이벤트 종료 end_at) ·
- * UNAVAILABLE 열리지 않음(배포 · 호스팅 시작 실패 — 목록에 없고 상세는 빈 상태)
+ * UNAVAILABLE 열리지 않음(배포 · 호스팅 시작 실패 — 목록에 없고 상세는 "확인 중" 빈 상태)
  */
 export type MonitoringPhase = 'BEFORE_ENTRY' | 'ENTRY_OPEN' | 'LIVE' | 'SOLD_OUT' | 'ENDED' | 'UNAVAILABLE';
 export type MonitoringGroup = 'LIVE' | 'TODAY' | 'ENDED';
@@ -195,7 +193,7 @@ export type MonitoringGroup = 'LIVE' | 'TODAY' | 'ENDED';
 export type MonitoringStepKey = 'HOSTING_START' | 'ENTRY' | 'LIVE' | 'END' | 'AGGREGATE';
 /**
  * CURRENT는 지금 실제로 진행 중인 단계만(예정 시각 전 기다리는 구간은 UPCOMING).
- * FAILED는 입장(OPEN_FAILED · 열리지 않은 채 종료) · 결과 집계(END_FAILED). SKIPPED = 진행 안 됨(열리지 않은 채 끝난 이벤트의 진행 · 종료 · 집계)
+ * FAILED는 입장(OPEN_FAILED · 열리지 않은 채 종료) · 결과 집계(END_FAILED) — 화면은 "확인 중". SKIPPED = 진행 안 됨(열리지 않은 채 끝난 이벤트의 진행 · 종료 · 집계)
  */
 export type MonitoringStepStatus = 'DONE' | 'CURRENT' | 'UPCOMING' | 'FAILED' | 'SKIPPED';
 /** 서비스 표시 — 정상 · 지연 중 · 확인 중 */

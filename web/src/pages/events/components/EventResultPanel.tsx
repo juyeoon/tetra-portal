@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Box, Button, Card, IconButton, Stack, Tooltip, Typography } from '@mui/material';
 import { BarChart } from '@mui/x-charts/BarChart';
-import ErrorOutlineRoundedIcon from '@mui/icons-material/ErrorOutlineRounded';
 import FileDownloadOutlinedIcon from '@mui/icons-material/FileDownloadOutlined';
 import HourglassEmptyRoundedIcon from '@mui/icons-material/HourglassEmptyRounded';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -17,6 +16,7 @@ import { useToast } from '@/store/ToastContext';
 import { chartColors, font, line, size, text } from '@/theme/theme';
 import { PEAK_CONCURRENT_HELP } from '@/utils/event';
 import { formatDateTime, formatNumber, formatPercent, formatRate, formatTime, openDownload } from '@/utils/format';
+import { CHECKING_NOTE } from '@/utils/status';
 
 /** 분당 그래프는 오픈 직후 10분만 그린다 (UI-TP-6-2) */
 const CHART_MINUTES = 10;
@@ -53,23 +53,14 @@ export default function EventResultPanel({ eventId }: { eventId: number }) {
   if (error) return <ErrorView message={error.message} onRetry={reload} />;
   if (!data) return <LoadingView />;
 
+  // 종료 처리가 끝나지 않음 — 고객 화면은 확인 중(원인은 서버가 내리지 않는다). 다시 처리되면 결과가 보인다
   if (data.state === 'END_FAILED') {
     return (
       <StateMessage
-        icon={<ErrorOutlineRoundedIcon />}
-        tone="red"
-        title="이벤트 종료 처리에 실패해 결과를 만들지 못했습니다"
-        description={
-          <>
-            {data.failure?.cause ?? '원인을 확인하고 있습니다.'}
-            {data.failure && (
-              <>
-                <br />
-                발생 {formatDateTime(data.failure.occurredAt)} · 운영팀이 확인 중이며, 문의는 고객센터로 보내주세요.
-              </>
-            )}
-          </>
-        }
+        icon={<HourglassEmptyRoundedIcon />}
+        tone="amber"
+        title="결과를 확인하고 있습니다"
+        description={`${CHECKING_NOTE} 확인이 끝나면 이 탭에서 결과와 발급 이력 CSV를 확인할 수 있습니다.`}
       />
     );
   }

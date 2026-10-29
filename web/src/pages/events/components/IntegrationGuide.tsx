@@ -6,6 +6,7 @@ import SectionTitle from '@/components/common/SectionTitle';
 import { useToast } from '@/store/ToastContext';
 import { color, font, line, radius, size, text, type } from '@/theme/theme';
 import type { EventDetail } from '@/types';
+import { CHECKING_NOTE } from '@/utils/status';
 import { GUIDE_LANGUAGES, jwtExample, jwtStructure, sessionForm, type GuideLanguage } from './guideSnippets';
 
 /** TODO: 연동 가이드 전체 문서 주소가 정해지면 넣는다 */
@@ -31,8 +32,8 @@ function Lead({ children }: { children: ReactNode }) {
   );
 }
 
-/** UI-TP-6-1 이벤트 상세 - 사전 가이드 */
-export default function IntegrationGuide({ event, tenantId }: { event: EventDetail; tenantId: string }) {
+/** UI-TP-6-1 이벤트 상세 - 사전 가이드. checking = 상단 칩이 확인 중(도메인은 그대로 보이고 안내 한 줄) */
+export default function IntegrationGuide({ event, tenantId, checking }: { event: EventDetail; tenantId: string; checking: boolean }) {
   const toast = useToast();
   const [lang, setLang] = useState<GuideLanguage>('Java');
   const domain = event.domain ?? '{승인 후 발급되는 도메인}';
@@ -105,7 +106,13 @@ export default function IntegrationGuide({ event, tenantId }: { event: EventDeta
           <SectionTitle>세션 발급 요청 (히든폼)</SectionTitle>
           <Lead>발급한 JWT를 숨은 입력값(JWT)에 담아 이벤트 도메인의 세션 발급 URL(/api/issuance/session)로 GET 요청합니다.</Lead>
           <CodeBlock>{sessionForm(domain)}</CodeBlock>
-          <Notes items={['서명 만료·jti 검증에 실패하면 세션이 발급되지 않습니다.', 'JWT를 URL로 전달하므로 만료 시간을 짧게 유지하세요.']} />
+          <Notes
+            items={[
+              ...(checking ? [`이벤트 도메인은 ${CHECKING_NOTE}`] : []),
+              '서명 만료·jti 검증에 실패하면 세션이 발급되지 않습니다.',
+              'JWT를 URL로 전달하므로 만료 시간을 짧게 유지하세요.',
+            ]}
+          />
         </Card>
       </Box>
     </Stack>

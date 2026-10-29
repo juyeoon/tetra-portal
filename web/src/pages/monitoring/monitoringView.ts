@@ -21,10 +21,11 @@ export const TEXT = {
   noEvent: '지금 볼 수 있는 이벤트가 없어요',
   noEventDescription: '이벤트 당일 입장 시각부터 이곳에서 실시간 현황을 볼 수 있어요.',
   beforeEntry: '입장 시각부터 데이터가 보여요',
-  prepareFailed: '준비 중 문제가 생겨 운영팀이 확인하고 있어요',
-  unavailable: '이 이벤트는 열리지 않아 모니터링할 수 없어요.',
-  unavailableDescription: '진행 기록은 이벤트 내역에서 볼 수 있어요.',
-  unavailableItem: '모니터링 불가',
+  checkingTitle: '운영팀이 확인하고 있어요',
+  prepareFailed: '운영팀이 입장 준비를 확인하고 있어요',
+  unavailable: '운영팀이 이벤트 준비를 확인하고 있어요',
+  unavailableDescription: '확인이 끝나면 이곳에서 실시간 현황을 볼 수 있어요.',
+  checkingItem: '확인 중',
   ended: '이벤트가 끝났어요',
   endedDescription: '확정 결과는 이벤트 내역 › 결과 탭에서 볼 수 있어요.',
   serviceDelayed: '요청이 몰려 처리가 늦어지고 있어요. 운영팀이 확인 중이에요',
@@ -98,12 +99,23 @@ export function waitText(state: MonitoringPhase, waitMinutes: number | null) {
 export const showsMetrics = (m: EventMonitoring) =>
   !m.prepareFailed && (m.state === 'ENTRY_OPEN' || m.state === 'LIVE' || m.state === 'SOLD_OUT');
 
+/**
+ * 확인 중 — 실패했거나 예정 시각이 지났는데 진행되지 않은 이벤트. 이벤트 내역(eventChipsOf)과 같은 기준을 현황 응답으로 본다:
+ * 열리지 않음(배포 · 호스팅 시작 실패) · 준비 실패 · 실패한 단계(입장 · 결과 집계) · 예정 시각이 지났는데 아직인 단계(호스팅 시작 · 입장)
+ */
+export const isCheckingMonitoring = (m: EventMonitoring) =>
+  m.state === 'UNAVAILABLE' || m.prepareFailed || m.steps.some((s) => s.status === 'FAILED' || s.delayed);
+
+/** 카드 · 그래프 자리(입장 전 등)의 안내 — 확인 중이면 운영팀 안내(황토) */
+export const placeholderOf = (m: EventMonitoring): { title: string; tone: Tone } =>
+  isCheckingMonitoring(m) ? { title: TEXT.checkingTitle, tone: 'amber' } : { title: TEXT.beforeEntry, tone: 'grey' };
+
 export interface Headline {
   label: string;
   value: string;
   /** 값 옆 보조 문구 (예: '14:00 입장') */
   note?: string;
-  /** 지연 안내 — 남은 시간 대신 '입장 지연 · 예정 시각 HH:mm' 한 줄(황토) */
+  /** 확인 중 안내 — 남은 시간 대신 '확인 중 · 입장 예정 HH:mm' 한 줄(황토) */
   delayed?: boolean;
 }
 
@@ -113,9 +125,9 @@ export function headlineOf(m: EventMonitoring, nowMs: number): Headline {
   const p = m.period;
   switch (m.state) {
     case 'BEFORE_ENTRY':
-      // 준비 실패로 입장 시각이 지났으면 남은 시간 대신 지연 안내(입장 시각 전이면 평소 문구)
+      // 준비 실패로 입장 시각이 지났으면 남은 시간 대신 확인 중(입장 시각 전이면 평소 문구)
       return entryDelayed(m, nowMs)
-        ? { label: '입장 지연', value: `예정 시각 ${clockOf(p.entryAt, nowMs)}`, delayed: true }
+        ? { label: '확인 중', value: `입장 예정 ${clockOf(p.entryAt, nowMs)}`, delayed: true }
         : { label: '입장까지', value: until(p.entryAt), note: `${clockOf(p.entryAt, nowMs)} 입장` };
     case 'ENTRY_OPEN':
       return { label: '시작까지', value: until(p.startAt), note: `${clockOf(p.startAt, nowMs)} 시작` };
@@ -126,7 +138,7 @@ export function headlineOf(m: EventMonitoring, nowMs: number): Headline {
       return { label: '종료', value: clockOf(p.endAt, nowMs) };
     case 'UNAVAILABLE':
       // 화면은 진행 단계 카드 대신 빈 상태만 그린다
-      return { label: '모니터링 불가', value: EMPTY };
+      return { label: TEXT.checkingItem, value: EMPTY };
   }
 }
 
@@ -153,12 +165,12 @@ const laterOf = (a: string | null, b: string | null) => (a == null ? b : b == nu
  * 단계 아래 문구. 끝남 'HH:mm 완료', 진행 중 'HH:mm 시작 · 진행 중', 아직 'HH:mm 예정'(api가 정한 상태대로 — 기다리는 구간은 예정).
  * 호스팅 시작 완료 시각은 실제 시각(없으면 예정 시각), 입장은 입장 시각과 실제(OPEN) 시각 중 늦은 쪽.
  * 이벤트 진행: 품절이면 'HH:mm 시작 · HH:mm 품절', 끝나면 'HH:mm 시작 · HH:mm 종료'(end_at).
- * 결과 집계: 'HH:mm 이후 집계'(hosting_end_at) → '집계 중' → '완료', END_FAILED면 '집계 지연'.
- * 실패한 입장은 '입장 지연', 열리지 않은 채 끝난 이벤트의 뒤 단계는 '진행 안 됨', 예정 시각이 지났는데 아직이면 '확인 중'.
+ * 결과 집계: 'HH:mm 이후 집계'(hosting_end_at) → '집계 중' → '완료'.
+ * 실패(입장 · 결과 집계)와 예정 시각이 지났는데 아직인 단계는 '확인 중', 열리지 않은 채 끝난 이벤트의 뒤 단계는 '진행 안 됨'.
  */
 export function stepCaption(step: MonitoringStep, m: EventMonitoring, nowMs: number) {
   if (step.status === 'SKIPPED') return '진행 안 됨';
-  if (step.status === 'FAILED') return step.step === 'AGGREGATE' ? '집계 지연' : '입장 지연';
+  if (step.status === 'FAILED') return '확인 중';
   const t = clockOf(step.at, nowMs);
   if (step.step === 'AGGREGATE') {
     return step.status === 'DONE' ? '완료' : step.status === 'CURRENT' ? '집계 중' : `${t} 이후 집계`;
@@ -182,7 +194,7 @@ export function stepCaption(step: MonitoringStep, m: EventMonitoring, nowMs: num
 }
 
 /**
- * 주기 호출을 멈출 응답 — 종료 뒤 결과 집계가 끝났을 때(완료 · 실패 · 진행 안 됨).
+ * 주기 호출을 멈출 응답 — 종료 뒤 결과 집계가 끝났을 때(완료 · 실패(확인 중) · 진행 안 됨).
  * 그 전까지는 종료여도 15초마다 다시 불러 진행 단계(결과 집계)를 갱신한다(서버는 Prometheus를 읽지 않는다).
  */
 export const pollingDone = (m: EventMonitoring) =>
@@ -218,7 +230,7 @@ export function rejectChip(rejects5m: number | null): Chip | null {
 export function refreshStatus(m: EventMonitoring, delayed: boolean): { text: string; delayed: boolean } | null {
   if (m.state === 'ENDED') return null;
   const last = secondsClock(m.lastUpdatedAt ?? m.serverTime);
-  return delayed ? { text: `데이터 지연 · 마지막 ${last}`, delayed } : { text: `15초마다 자동 갱신 · 마지막 ${last}`, delayed };
+  return delayed ? { text: `확인 중 · 마지막 ${last}`, delayed } : { text: `15초마다 자동 갱신 · 마지막 ${last}`, delayed };
 }
 
 /* ---------- 드롭다운 ---------- */
@@ -248,9 +260,9 @@ export interface EventOption {
   label: string;
 }
 
-/** 현황 응답 → 항목 끝 상태(목록에 없는 이벤트를 보고 있을 때). 열리지 않은 이벤트는 '모니터링 불가' */
+/** 현황 응답 → 항목 끝 상태(목록에 없는 이벤트를 보고 있을 때). 확인 중인 이벤트(열리지 않음 포함)는 '확인 중' */
 export function detailCaption(m: EventMonitoring, nowMs: number) {
-  if (m.state === 'UNAVAILABLE') return TEXT.unavailableItem;
+  if (isCheckingMonitoring(m)) return TEXT.checkingItem;
   const group = m.state === 'ENDED' ? 'ENDED' : m.state === 'BEFORE_ENTRY' ? 'TODAY' : 'LIVE';
   const p = m.period;
   return itemCaption(
@@ -261,13 +273,21 @@ export function detailCaption(m: EventMonitoring, nowMs: number) {
 
 /**
  * 드롭다운 항목: 목록 + 보고 있는 이벤트가 목록에 없으면(URL로 직접 · 종료 7일 경과 · 보는 중 열리지 않게 됨) 현황 응답으로 맨 위에 하나.
- * 목록이 아직 옛 값이어도 현황이 열리지 않은 이벤트라고 하면 그 항목은 '모니터링 불가'.
+ * 확인 중이면 시각 문구('입장 중' 등) 대신 '확인 중' — 보고 있는 이벤트는 현황 응답으로, 나머지는 checkingIds
+ * (목록 응답에 호스팅 · 이벤트 상태가 없어 화면이 이벤트 내역 목록에 eventChipsOf로 정한 값).
  */
-export function selectOptions(events: MonitoringEventItem[], selected: number | null, m: EventMonitoring | undefined, nowMs: number): EventOption[] {
+export function selectOptions(
+  events: MonitoringEventItem[],
+  selected: number | null,
+  m: EventMonitoring | undefined,
+  nowMs: number,
+  checkingIds: ReadonlySet<number> = new Set(),
+): EventOption[] {
   const viewing = m && m.eventId === selected ? m : null;
+  const checking = (eventId: number) => (viewing?.eventId === eventId ? isCheckingMonitoring(viewing) : checkingIds.has(eventId));
   const options = events.map((e) => ({
     eventId: e.eventId,
-    label: `${e.name} · ${viewing?.eventId === e.eventId && viewing.state === 'UNAVAILABLE' ? TEXT.unavailableItem : itemCaption(e, nowMs)}`,
+    label: `${e.name} · ${checking(e.eventId) ? TEXT.checkingItem : itemCaption(e, nowMs)}`,
   }));
   if (viewing && !events.some((e) => e.eventId === viewing.eventId)) {
     options.unshift({ eventId: viewing.eventId, label: `${viewing.name} · ${detailCaption(viewing, nowMs)}` });

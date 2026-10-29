@@ -6,13 +6,16 @@ import StatusChip, { EmptyValue } from '@/components/common/StatusChip';
 import { size, text, type } from '@/theme/theme';
 import type { EventDetail } from '@/types';
 import { formatDateTime, formatPeriod } from '@/utils/format';
-import { applicationStatusMeta, eventStatusMeta, hostingStatusMeta } from '@/utils/status';
+import { CHECKING_NOTE, applicationStatusMeta, isChecking, type EventStatusChips } from '@/utils/status';
 
-/** 이벤트 상세 상단 요약 — 탭을 바꿔도 항상 보이는 영역 (UI-TP-06 ①) */
-export default function EventSummary({ event }: { event: EventDetail }) {
+/**
+ * 이벤트 상세 상단 요약 — 탭을 바꿔도 항상 보이는 영역 (UI-TP-06 ①).
+ * 호스팅 · 이벤트 칩은 상세 화면이 정한다(eventChipsOf). 둘 다 확인 중이면 칩 하나 + 안내 한 줄
+ */
+export default function EventSummary({ event, chips }: { event: EventDetail; chips: EventStatusChips }) {
   const status = applicationStatusMeta[event.status.applicationStatus];
-  const hosting = event.status.hostingStatus && hostingStatusMeta[event.status.hostingStatus];
-  const progress = event.status.eventStatus && eventStatusMeta[event.status.eventStatus];
+  const hosting = chips.hosting;
+  const progress = isChecking(chips.hosting) && isChecking(chips.event) ? null : chips.event;
   const facts = [
     { label: '이벤트 ID', value: <Box sx={{ ...type.monoSm, wordBreak: 'break-all' }}>ID {event.eventId}</Box> },
     { label: '이벤트 기간', value: formatPeriod(formatDateTime(event.startAt), formatDateTime(event.endAt)) },
@@ -38,14 +41,21 @@ export default function EventSummary({ event }: { event: EventDetail }) {
   return (
     <Card sx={{ p: 3 }}>
       <Stack direction={{ xs: 'column-reverse', md: 'row' }} alignItems={{ md: 'flex-start' }} justifyContent="space-between" spacing={1.5}>
-        <Stack direction="row" alignItems="center" flexWrap="wrap" useFlexGap spacing={1.5}>
-          <Typography variant="h2" component="h2">
-            {event.name}
-          </Typography>
-          <StatusChip label={status.label} tone={status.tone} en={status.en} />
-          {hosting && <StatusChip label={hosting.label} tone={hosting.tone} />}
-          {progress && <StatusChip label={progress.label} tone={progress.tone} />}
-        </Stack>
+        <Box sx={{ minWidth: 0 }}>
+          <Stack direction="row" alignItems="center" flexWrap="wrap" useFlexGap spacing={1.5}>
+            <Typography variant="h2" component="h2">
+              {event.name}
+            </Typography>
+            <StatusChip label={status.label} tone={status.tone} en={status.en} />
+            {hosting && <StatusChip label={hosting.label} tone={hosting.tone} />}
+            {progress && <StatusChip label={progress.label} tone={progress.tone} />}
+          </Stack>
+          {chips.checking && (
+            <Typography variant="body2" sx={{ mt: 1, color: text.secondary }}>
+              {CHECKING_NOTE}
+            </Typography>
+          )}
+        </Box>
         <Link
           component={RouterLink}
           to="/events"
