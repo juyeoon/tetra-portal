@@ -262,8 +262,13 @@ public final class TestData {
 
 	public long notification(String tenantId, Long eventId, String priority, LocalDateTime occurredAt, String content,
 			boolean read) {
-		jdbc.update("INSERT INTO t_%s.tenant_notification (tenant_id, event_id, category, priority, occurred_at, content, is_read) VALUES (?, ?, 'APPLICATION', ?, ?, ?, ?)"
-			.formatted(tenantId), tenantId, eventId, priority, occurredAt, content, read);
+		return notification(tenantId, eventId, "APPLICATION", priority, occurredAt, content, read);
+	}
+
+	public long notification(String tenantId, Long eventId, String category, String priority, LocalDateTime occurredAt,
+			String content, boolean read) {
+		jdbc.update("INSERT INTO t_%s.tenant_notification (tenant_id, event_id, category, priority, occurred_at, content, is_read) VALUES (?, ?, ?, ?, ?, ?, ?)"
+			.formatted(tenantId), tenantId, eventId, category, priority, occurredAt, content, read);
 		return jdbc.queryForObject("SELECT MAX(notification_id) FROM t_%s.tenant_notification".formatted(tenantId), Long.class);
 	}
 

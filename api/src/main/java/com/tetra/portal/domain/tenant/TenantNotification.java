@@ -12,8 +12,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 /**
- * UI-TP-13 알림센터. 행은 Console(승인 · 반려 · 종료)과 Portal(신청 접수 INFO · 접수 실패 WARNING)이 넣는다.
- * category 값은 고도화 때 확정(지금 신청 알림은 APPLICATION). priority는 URGENT · WARNING · INFO.
+ * UI-TP-13 알림센터. 행은 Console(승인 · 반려 · 호스팅 시작 · 입장 시작 · 종료 · 집계 완료)과
+ * Portal(신청 접수 INFO · 접수 실패 WARNING)이 넣는다. category는 DB 값 그대로 읽는다(모르는 값도 목록에 나온다 —
+ * 값 목록은 NotificationService.Category, 칩은 NotificationRules). priority는 URGENT · WARNING · INFO.
  */
 @Entity
 @Table(name = "tenant_notification")

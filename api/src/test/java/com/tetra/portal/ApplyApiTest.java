@@ -122,15 +122,16 @@ class ApplyApiTest extends IntegrationTest {
 			.satisfies(l -> assertThat(l).containsEntry("prev_status", "INACTIVE").containsEntry("new_status", "ACTIVE")
 				.containsEntry("related_event_id", eventId));
 
-		// 신청 접수 알림 — 운영자 · 테넌트 1건씩. 계정 활성화는 같은 순간이라 따로 남기지 않는다
+		// 신청 접수 알림 — 운영자(승인 검토가 필요해 WARNING) · 테넌트(INFO) 1건씩. 계정 활성화는 같은 순간이라 따로 남기지 않는다.
+		// 운영자 알림은 tenant_id · event_id가 있어야 Console 알림센터 링크가 생긴다
 		assertThat(data.operatorNotifications(eventId)).singleElement()
-			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("category", "APPLICATION")
-				.containsEntry("priority", "INFO").containsEntry("is_read", false)
-				.containsEntry("content", "[A사] [가을 쿠폰] 이벤트 신청이 접수되었습니다. 승인 검토가 필요합니다."));
+			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("event_id", eventId)
+				.containsEntry("category", "APPLICATION").containsEntry("priority", "WARNING").containsEntry("is_read", false)
+				.containsEntry("content", "[A사] [" + eventId + ":가을 쿠폰] 이벤트 신청이 접수되었습니다. 승인 검토가 필요합니다."));
 		assertThat(data.tenantNotifications(A, eventId)).singleElement()
 			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("category", "APPLICATION")
 				.containsEntry("priority", "INFO").containsEntry("is_read", false)
-				.containsEntry("content", "[가을 쿠폰] 이벤트 신청이 접수되었습니다."));
+				.containsEntry("content", "[" + eventId + ":가을 쿠폰] 이벤트 신청이 접수되었습니다."));
 		assertThat(data.count("SELECT COUNT(*) FROM tetra_platform.operator_notification WHERE category <> 'APPLICATION'"))
 			.isZero();
 
@@ -167,12 +168,12 @@ class ApplyApiTest extends IntegrationTest {
 		assertThat(data.count("SELECT COUNT(*) FROM tetra_platform.tenant WHERE tenant_id = ? AND account_status = 'INACTIVE'", A)).isEqualTo(1);
 
 		assertThat(data.operatorNotifications(eventId)).singleElement()
-			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("category", "APPLICATION")
-				.containsEntry("priority", "WARNING")
-				.containsEntry("content", "[A사] [가을 쿠폰] 이벤트 신청 접수에 실패했습니다. 원인: 배너 업로드 실패"));
+			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("event_id", eventId)
+				.containsEntry("category", "APPLICATION").containsEntry("priority", "WARNING")
+				.containsEntry("content", "[A사] [" + eventId + ":가을 쿠폰] 이벤트 신청 접수에 실패했습니다. 원인: 배너 업로드 실패"));
 		assertThat(data.tenantNotifications(A, eventId)).singleElement()
 			.satisfies(n -> assertThat(n).containsEntry("category", "APPLICATION").containsEntry("priority", "WARNING")
-				.containsEntry("content", "[가을 쿠폰] 이벤트 신청이 접수되지 않았습니다. 다시 신청해 주세요. 원인: 배너 업로드 실패"));
+				.containsEntry("content", "[" + eventId + ":가을 쿠폰] 이벤트 신청이 접수되지 않았습니다. 다시 신청해 주세요. 원인: 배너 업로드 실패"));
 	}
 
 	@Test
@@ -292,10 +293,10 @@ class ApplyApiTest extends IntegrationTest {
 		assertThat(data.registry(1002)).containsEntry("application_status", "APPLYING"); // 아직 10분 안
 		assertThat(data.operatorNotifications(1001)).singleElement()
 			.satisfies(n -> assertThat(n).containsEntry("tenant_id", A).containsEntry("priority", "WARNING")
-				.containsEntry("content", "[A사] [이벤트 1001] 이벤트 신청 접수에 실패했습니다. 원인: 배너 업로드 시간 초과"));
+				.containsEntry("content", "[A사] [1001:이벤트 1001] 이벤트 신청 접수에 실패했습니다. 원인: 배너 업로드 시간 초과"));
 		assertThat(data.tenantNotifications(A, 1001)).singleElement()
 			.satisfies(n -> assertThat(n).containsEntry("priority", "WARNING")
-				.containsEntry("content", "[이벤트 1001] 이벤트 신청이 접수되지 않았습니다. 다시 신청해 주세요. 원인: 배너 업로드 시간 초과"));
+				.containsEntry("content", "[1001:이벤트 1001] 이벤트 신청이 접수되지 않았습니다. 다시 신청해 주세요. 원인: 배너 업로드 시간 초과"));
 		assertThat(data.operatorNotifications(2001)).singleElement()
 			.satisfies(n -> assertThat(n).containsEntry("tenant_id", B).containsEntry("priority", "WARNING"));
 		assertThat(data.tenantNotifications(B, 2001)).hasSize(1);

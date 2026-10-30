@@ -117,9 +117,9 @@ export const eventTypeLabel: Record<EventType, string> = {
   LIVE_COMMERCE: '라이브커머스',
 };
 
-/** 알림 우선순위 태그 — 긴급(빨강) / 경고(주황) / 정보(파랑) */
+/** 알림 우선순위 태그 — 긴급(빨강) / 주의(주황) / 정보(파랑) */
 export const priorityMeta: Record<NotificationPriority, StatusMeta> = {
   URGENT: { label: '긴급', tone: 'red', en: 'Urgent' },
-  WARNING: { label: '경고', tone: 'amber', en: 'Warning' },
+  WARNING: { label: '주의', tone: 'amber', en: 'Warning' },
   INFO: { label: '정보', tone: 'blue', en: 'Info' },
 };

@@ -23,10 +23,10 @@ class EventQueryApiTest extends IntegrationTest {
 		data.tenant(A, "A사", "ACTIVE", "READY");
 		mvc.perform(get("/api/portal/plans").cookie(loginCookie(A)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.length()").value(4)) // HIDDEN은 is_visible = 0
+			.andExpect(jsonPath("$.length()").value(3)) // HIDDEN(시험 시드) · XL(V3)은 is_visible = 0
 			.andExpect(jsonPath("$[0].planCode").value("S"))
 			.andExpect(jsonPath("$[0].maxCapacity").value(10000))
-			.andExpect(jsonPath("$[3].planCode").value("XL"))
+			.andExpect(jsonPath("$[2].planCode").value("L"))
 			// 금액은 내보내지 않는다 (2026-10-19 결정)
 			.andExpect(jsonPath("$[0].hourlyPrice").doesNotExist())
 			.andExpect(jsonPath("$[0].hostingHourlyPrice").doesNotExist());

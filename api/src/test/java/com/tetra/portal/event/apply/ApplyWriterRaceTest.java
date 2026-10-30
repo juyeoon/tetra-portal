@@ -34,8 +34,10 @@ class ApplyWriterRaceTest extends IntegrationTest {
 		assertThat(applied).isFalse();
 		assertThat(data.registry(1001)).containsEntry("application_status", "APPLY_FAILED");
 		assertThat(data.statusLogs(A, 1001)).hasSize(1);
+		// 운영자 알림은 접수도 WARNING이라 문구로 구분한다
 		assertThat(data.operatorNotifications(1001)).singleElement()
-			.satisfies(n -> assertThat(n).containsEntry("priority", "WARNING"));
+			.satisfies(n -> assertThat(n).containsEntry("priority", "WARNING")
+				.containsEntry("content", "[A사] [1001:겨울 쿠폰] 이벤트 신청 접수에 실패했습니다. 원인: 배너 업로드 시간 초과"));
 		assertThat(data.tenantNotifications(A, 1001)).singleElement()
 			.satisfies(n -> assertThat(n).containsEntry("priority", "WARNING"));
 		assertThat(data.tenantStatusLogs(A)).isEmpty(); // 실패한 신청으로는 활성화하지 않는다
@@ -53,8 +55,8 @@ class ApplyWriterRaceTest extends IntegrationTest {
 
 		assertThat(data.registry(1001)).containsEntry("application_status", "APPLIED");
 		assertThat(data.operatorNotifications(1001)).singleElement()
-			.satisfies(n -> assertThat(n).containsEntry("priority", "INFO")
-				.containsEntry("content", "[A사] [겨울 쿠폰] 이벤트 신청이 접수되었습니다. 승인 검토가 필요합니다."));
+			.satisfies(n -> assertThat(n).containsEntry("priority", "WARNING")
+				.containsEntry("content", "[A사] [1001:겨울 쿠폰] 이벤트 신청이 접수되었습니다. 승인 검토가 필요합니다."));
 		assertThat(data.tenantNotifications(A, 1001)).singleElement()
 			.satisfies(n -> assertThat(n).containsEntry("priority", "INFO"));
 	}

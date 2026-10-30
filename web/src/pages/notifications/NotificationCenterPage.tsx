@@ -5,6 +5,7 @@ import { getSettings, listNotifications, markNotificationRead } from '@/api/port
 import { useApi } from '@/api/useApi';
 import { ErrorView, LoadingView } from '@/components/common/LoadState';
 import NotificationCenter from '@/components/notification/NotificationCenter';
+import { readOptimistically } from '@/components/notification/notificationView';
 import PageHeader from '@/components/layout/PageHeader';
 import { useToast } from '@/store/ToastContext';
 import { type } from '@/theme/theme';
@@ -15,17 +16,11 @@ export default function NotificationCenterPage() {
   const { data: notifications, error, reload, setData } = useApi(listNotifications, []);
   const settings = useApi(getSettings, []);
 
-  // 화면을 먼저 바꾸고, 실패하면 되돌린다
-  const read = async (id: number) => {
-    const mark = (value: boolean) => setData((prev) => prev?.map((n) => (n.notificationId === id ? { ...n, read: value } : n)));
-    mark(true);
-    try {
-      await markNotificationRead(id);
-    } catch (e) {
-      mark(false);
-      toast(errorMessage(e), 'error');
-    }
-  };
+  // 화면을 먼저 바꾸고, 실패하면 되돌리고 토스트 — 이동(링크)은 기다리지도 막지도 않는다
+  const read = (id: number) =>
+    readOptimistically(id, (change) => setData((prev) => (prev ? change(prev) : prev)), markNotificationRead, (e) =>
+      toast(errorMessage(e), 'error'),
+    );
 
   return (
     <>

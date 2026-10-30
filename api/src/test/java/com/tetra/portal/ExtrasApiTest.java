@@ -76,8 +76,56 @@ class ExtrasApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$[0].eventId").value(eventId))
 			.andExpect(jsonPath("$[0].category").value("APPLICATION"))
 			.andExpect(jsonPath("$[0].priority").value("INFO"))
-			.andExpect(jsonPath("$[0].content").value("[가을 쿠폰] 이벤트 신청이 접수되었습니다."))
-			.andExpect(jsonPath("$[0].read").value(false));
+			.andExpect(jsonPath("$[0].content").value("[" + eventId + ":가을 쿠폰] 이벤트 신청이 접수되었습니다."))
+			.andExpect(jsonPath("$[0].read").value(false))
+			.andExpect(jsonPath("$[0].chip").value("APPLICATION"))
+			.andExpect(jsonPath("$[0].link").value("/events/" + eventId));
+	}
+
+	@Test
+	void notificationsCarryChipAndLink() throws Exception {
+		data.tenant(A, "A사", "ACTIVE", "READY");
+		data.event(1001, A).insert();
+		// 첫 줄을 가장 늦은 시각으로 넣어 목록 순서 = 이 배열 순서($[i] = rows[i])
+		String[][] rows = {
+				// category, eventId
+				{ "APPLICATION", "1001" }, { "APPLICATION", null }, { "HOSTING", "1001" }, { "EVENT", "1001" },
+				{ "EVENT", null }, { "MAIL", "1001" }, { "MAIL", null }, { "REPORT", null }, { "DELAY", "1001" },
+				{ "SYSTEM", null }, { "SLACK", "1001" } };
+		for (int i = 0; i < rows.length; i++) {
+			Long eventId = rows[i][1] == null ? null : Long.valueOf(rows[i][1]);
+			data.notification(A, eventId, rows[i][0], "INFO", TestData.BASE.plusMinutes(rows.length - i), rows[i][0], false);
+		}
+
+		mvc.perform(get("/api/portal/notifications").cookie(loginCookie(A)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.length()").value(rows.length))
+			// 신청 → 상세(기본 탭 신청 내용), 이벤트가 없으면 읽음만
+			.andExpect(jsonPath("$[0].chip").value("APPLICATION"))
+			.andExpect(jsonPath("$[0].link").value("/events/1001"))
+			.andExpect(jsonPath("$[1].chip").value("APPLICATION"))
+			.andExpect(jsonPath("$[1].link").doesNotExist())
+			// 이벤트 = HOSTING · EVENT · MAIL(이벤트 있음) → 결과 탭
+			.andExpect(jsonPath("$[2].chip").value("EVENT"))
+			.andExpect(jsonPath("$[2].link").value("/events/1001?tab=result"))
+			.andExpect(jsonPath("$[3].chip").value("EVENT"))
+			.andExpect(jsonPath("$[3].link").value("/events/1001?tab=result"))
+			.andExpect(jsonPath("$[4].chip").value("EVENT"))
+			.andExpect(jsonPath("$[4].link").doesNotExist())
+			.andExpect(jsonPath("$[5].chip").value("EVENT"))
+			.andExpect(jsonPath("$[5].link").value("/events/1001?tab=result"))
+			.andExpect(jsonPath("$[6].chip").doesNotExist())
+			// 리포트는 이벤트와 무관
+			.andExpect(jsonPath("$[7].chip").value("REPORT"))
+			.andExpect(jsonPath("$[7].link").value("/reports"))
+			// 운영자 전용 값 · 모르는 값도 목록에는 나온다(칩 · 링크 없음)
+			.andExpect(jsonPath("$[8].category").value("DELAY"))
+			.andExpect(jsonPath("$[8].chip").doesNotExist())
+			.andExpect(jsonPath("$[8].link").doesNotExist())
+			.andExpect(jsonPath("$[9].chip").doesNotExist())
+			.andExpect(jsonPath("$[10].category").value("SLACK"))
+			.andExpect(jsonPath("$[10].chip").doesNotExist())
+			.andExpect(jsonPath("$[10].link").doesNotExist());
 	}
 
 	@Test
