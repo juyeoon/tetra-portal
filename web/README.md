@@ -90,7 +90,7 @@ npm run dev          # http://localhost:5174
 | 화면 | 확인할 것 |
 | --- | --- |
 | 리포트 `/reports` | [다운로드] → 5분짜리 다운로드 링크(로컬은 가짜 주소), [이메일 전송] → 로그인 계정 주소로 전송 토스트(로컬은 `api/build/local-mail/`) |
-| 알림 센터 `/notifications` | 안읽음 건 — 항목 클릭 시 읽음(새로고침해도 유지), 필터 5종 건수, 검색 즉시 반영, Slack "준비 중" |
+| 알림 센터 `/notifications` | 안읽음 건 — 항목 클릭 시 읽음(새로고침해도 유지), 우선순위 4칸 건수(안 읽은 것만을 따름), 분류 메뉴 건수(우선순위 · 안 읽은 것만을 따름), 검색 즉시 반영 |
 | 설정 `/settings` | 이메일 수신 토글(새로고침해도 유지), Slack "준비 중" |
 | 사용자 메뉴 (우측 상단) | 설정 이동, 로그아웃 → `/login` |
 
@@ -214,7 +214,7 @@ Console의 신청 내용(OPS-03-2·04-2) · 알림센터 · 리포트는 "Portal
 | 이벤트 목록 · 상세 | `GET /events` · `GET /events/{id}` (+ 플랜 표시 `GET /plans`) |
 | 이벤트 신청 | `GET /plans` · `POST /events` (multipart: `application` JSON + `banner` 파일) |
 | 결과 탭 | `GET /events/{id}/result` · CSV `GET /events/{id}/result/history-csv` (다운로드 링크) |
-| 알림 센터 | `GET /notifications` · `PATCH /notifications/{id}/read` (+ `GET /settings`) |
+| 알림 센터 | `GET /notifications` · `PATCH /notifications/{id}/read` |
 | 리포트 | `GET /reports` · `GET /reports/{id}/download` · `POST /reports/{id}/email` |
 | 설정 | `GET /settings` · `PATCH /settings/email` |
 
