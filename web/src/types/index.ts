@@ -166,7 +166,7 @@ export interface PortalNotification {
   occurredAt: string;
   content: string;
   read: boolean;
-  /** 칩 — 신청 · 이벤트 · 리포트가 아니면 null(칩 필터 '전체'에서만) */
+  /** 칩 — 신청 · 이벤트 · 리포트가 아니면 null(분류 '전체'에서만) */
   chip: NotificationChip | null;
   /** 누르면 갈 화면 경로('/'로 시작) — 없으면 null(읽음만) */
   link: string | null;

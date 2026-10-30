@@ -3,18 +3,18 @@ import type { NotificationChip, NotificationPriority, PortalNotification } from 
 /**
  * UI-TP-13 알림센터 필터 · 검색 · 건수 · 이동 · 읽음 처리 — 화면과 분리, node --test 대상.
  * 서버는 전체를 최신순으로 주고, 항목마다 칩 · 이동 경로를 계산해 준다.
+ * 필터는 한 줄 — 우선순위(세그먼트) AND 분류(드롭다운) AND 안 읽은 것만(토글) AND 내용 검색.
  * 이 모듈과 이 모듈이 부르는 파일은 상대 경로 + .ts로 import한다(Node가 @/ 를 풀지 못함).
  */
 
-export type NotificationFilter = 'ALL' | NotificationPriority | 'UNREAD';
+export type PriorityFilter = 'ALL' | NotificationPriority;
 
-/** 탭 5종 — 운영 콘솔 알림센터(OPS-08)와 같은 순서 · 이름 */
-export const NOTIFICATION_FILTERS: { key: NotificationFilter; label: string }[] = [
-  { key: 'ALL', label: '전체보기' },
+/** 우선순위 세그먼트 — 이름은 우선순위 태그(priorityMeta)와 같다 */
+export const PRIORITY_FILTERS: { key: PriorityFilter; label: string }[] = [
+  { key: 'ALL', label: '전체' },
   { key: 'URGENT', label: '긴급' },
   { key: 'WARNING', label: '주의' },
   { key: 'INFO', label: '정보' },
-  { key: 'UNREAD', label: '안읽음' },
 ];
 
 export type ChipFilter = 'ALL' | NotificationChip;
@@ -26,48 +26,87 @@ export const CHIP_LABEL: Record<NotificationChip, string> = {
   REPORT: '리포트',
 };
 
-/** 칩 필터(탭 아래 둘째 줄) — 전체 + 3종. 칩이 없는 알림은 '전체'에서만 보인다 */
+/** 분류 드롭다운 메뉴 — 전체 + 3종. 칩이 없는 알림은 '전체'에서만 보인다 */
 export const NOTIFICATION_CHIPS: { key: ChipFilter; label: string }[] = [
   { key: 'ALL', label: '전체' },
   ...(Object.keys(CHIP_LABEL) as NotificationChip[]).map((key) => ({ key, label: CHIP_LABEL[key] })),
 ];
 
-export function matchesFilter(n: PortalNotification, filter: NotificationFilter): boolean {
-  if (filter === 'ALL') return true;
-  if (filter === 'UNREAD') return !n.read;
-  return n.priority === filter;
+/** 화면에서 고른 조건 */
+export interface NotificationFilters {
+  priority: PriorityFilter;
+  chip: ChipFilter;
+  /** 안 읽은 것만 */
+  unreadOnly: boolean;
+  query: string;
+}
+
+export function matchesPriority(n: PortalNotification, priority: PriorityFilter): boolean {
+  return priority === 'ALL' || n.priority === priority;
 }
 
 export function matchesChip(n: PortalNotification, chip: ChipFilter): boolean {
   return chip === 'ALL' || n.chip === chip;
 }
 
-/** 탭 건수 — 검색어 · 칩과 무관하게 전체 목록 기준 */
-export function countByFilter(items: PortalNotification[]): Record<NotificationFilter, number> {
-  return Object.fromEntries(
-    NOTIFICATION_FILTERS.map((f) => [f.key, items.filter((n) => matchesFilter(n, f.key)).length]),
-  ) as Record<NotificationFilter, number>;
+export function matchesUnread(n: PortalNotification, unreadOnly: boolean): boolean {
+  return !unreadOnly || !n.read;
 }
 
-/** 칩 건수 — 지금 탭 안에서(탭과 AND), 검색어와 무관 */
-export function countByChip(items: PortalNotification[], filter: NotificationFilter): Record<ChipFilter, number> {
-  const inTab = items.filter((n) => matchesFilter(n, filter));
+/** 우선순위 건수 — 안 읽은 것만 조건 안에서(고른 분류 · 검색과 무관) */
+export function countByPriority(
+  items: PortalNotification[],
+  { unreadOnly }: Pick<NotificationFilters, 'unreadOnly'>,
+): Record<PriorityFilter, number> {
+  const inScope = items.filter((n) => matchesUnread(n, unreadOnly));
   return Object.fromEntries(
-    NOTIFICATION_CHIPS.map((c) => [c.key, inTab.filter((n) => matchesChip(n, c.key)).length]),
+    PRIORITY_FILTERS.map((p) => [p.key, inScope.filter((n) => matchesPriority(n, p.key)).length]),
+  ) as Record<PriorityFilter, number>;
+}
+
+/** 분류 건수 — 지금 우선순위 AND 안 읽은 것만 안에서(고른 분류 · 검색과 무관). 칩이 없는 알림은 '전체'에만 센다 */
+export function countByChip(
+  items: PortalNotification[],
+  { priority, unreadOnly }: Pick<NotificationFilters, 'priority' | 'unreadOnly'>,
+): Record<ChipFilter, number> {
+  const inScope = items.filter((n) => matchesPriority(n, priority) && matchesUnread(n, unreadOnly));
+  return Object.fromEntries(
+    NOTIFICATION_CHIPS.map((c) => [c.key, inScope.filter((n) => matchesChip(n, c.key)).length]),
   ) as Record<ChipFilter, number>;
 }
 
-/** 보이는 목록 — 탭 AND 칩 AND 내용 검색(앞뒤 공백 · 대소문자 무시, 입력 즉시). 최신순(같은 시각은 나중 알림 먼저) */
-export function visibleNotifications(
-  items: PortalNotification[],
-  filter: NotificationFilter,
-  chip: ChipFilter,
-  query: string,
-): PortalNotification[] {
-  const q = query.trim().toLowerCase();
+export interface ChipMenuItem {
+  key: ChipFilter;
+  label: string;
+  count: number;
+  /** 0건 — 흐리게만, 고를 수는 있다 */
+  dim: boolean;
+}
+
+/** 분류 메뉴 항목 — 이름 · 건수(countByChip) */
+export function chipMenuItems(items: PortalNotification[], scope: Pick<NotificationFilters, 'priority' | 'unreadOnly'>): ChipMenuItem[] {
+  const counts = countByChip(items, scope);
+  return NOTIFICATION_CHIPS.map((c) => ({ ...c, count: counts[c.key], dim: counts[c.key] === 0 }));
+}
+
+/** 분류 버튼 글자 — '분류: 전체', 고르면 '분류: 이벤트' */
+export function chipButtonLabel(chip: ChipFilter): string {
+  return `분류: ${chip === 'ALL' ? '전체' : CHIP_LABEL[chip]}`;
+}
+
+/** 보이는 목록 — 우선순위 AND 분류 AND 안 읽은 것만 AND 내용 검색(앞뒤 공백 · 대소문자 무시, 입력 즉시). 최신순(같은 시각은 나중 알림 먼저) */
+export function visibleNotifications(items: PortalNotification[], filters: NotificationFilters): PortalNotification[] {
+  const { priority, chip, unreadOnly } = filters;
+  const q = filters.query.trim().toLowerCase();
   // ISO +09:00 문자열이라 글자 비교 = 시각 비교
   return items
-    .filter((n) => matchesFilter(n, filter) && matchesChip(n, chip) && (q === '' || n.content.toLowerCase().includes(q)))
+    .filter(
+      (n) =>
+        matchesPriority(n, priority) &&
+        matchesChip(n, chip) &&
+        matchesUnread(n, unreadOnly) &&
+        (q === '' || n.content.toLowerCase().includes(q)),
+    )
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.notificationId - a.notificationId);
 }
 
