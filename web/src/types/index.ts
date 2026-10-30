@@ -149,20 +149,27 @@ export interface DownloadLink {
   expiresAt: string;
 }
 
-/** 알림 우선순위 — 긴급 / 경고 / 정보 */
+/** 알림 우선순위 — 긴급 / 주의 / 정보 */
 export type NotificationPriority = 'URGENT' | 'WARNING' | 'INFO';
 
-/** 알림 (GET /notifications) — 최신순 */
+/** 알림 칩(종류) — 신청 / 이벤트 / 리포트 */
+export type NotificationChip = 'APPLICATION' | 'EVENT' | 'REPORT';
+
+/** 알림 (GET /notifications) — 최신순. 칩 · 이동 경로는 서버가 계산한다 */
 export interface PortalNotification {
   notificationId: number;
   /** 관련 이벤트 — 없으면 null */
   eventId: number | null;
-  /** 분류 (고도화 때 확정 — 지금은 APPLICATION) */
+  /** 분류 — DB 값 그대로(화면은 쓰지 않고 chip을 쓴다) */
   category: string;
   priority: NotificationPriority;
   occurredAt: string;
   content: string;
   read: boolean;
+  /** 칩 — 신청 · 이벤트 · 리포트가 아니면 null(칩 필터 '전체'에서만) */
+  chip: NotificationChip | null;
+  /** 누르면 갈 화면 경로('/'로 시작) — 없으면 null(읽음만) */
+  link: string | null;
 }
 
 /** 리포트 (GET /reports) — 최근 생성 먼저 */

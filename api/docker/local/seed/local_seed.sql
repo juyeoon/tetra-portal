@@ -83,7 +83,7 @@ INSERT INTO t_k7f2m9qx4b1t.issuance_history (event_id, tenant_id, user_id, ticke
     (1003, 'k7f2m9qx4b1t', 'user-010', 10, '2026-09-25 10:03:00.000', '2026-09-25 10:03:30.000', '2026-09-25 10:03:30.200', 'SUCCESS');
 
 -- ---------------------------------------------------------------- 알림 · 리포트 (화면 확인용)
--- 알림은 Console(승인 INFO · 반려 WARNING)과 운영 자동화가 넣는다. category 값은 고도화 때 확정
+-- 알림은 Console(승인 · 반려 · 호스팅 · 이벤트)과 Portal(신청 접수 · 실패)이 넣는다. category 값은 NotificationService.Category
 INSERT INTO t_k7f2m9qx4b1t.tenant_notification (tenant_id, event_id, category, priority, occurred_at, content, is_read) VALUES
     ('k7f2m9qx4b1t', 1003, 'APPLICATION', 'INFO', '2026-09-11 09:00:00', '[추석 감사 쿠폰] 신청이 승인되었습니다.', 1),
     ('k7f2m9qx4b1t', 1002, 'APPLICATION', 'INFO', '2026-10-06 10:00:00', '[가을 정기 세일 쿠폰] 신청이 승인되었습니다.', 0),
