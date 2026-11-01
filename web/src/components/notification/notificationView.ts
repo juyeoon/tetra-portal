@@ -51,7 +51,7 @@ export function chipButtonLabel(chip: ChipFilter): string {
 }
 
 /** 한 페이지 건수(서버 기본값과 같다) */
-export const PAGE_SIZE = 20;
+export const PAGE_SIZE = 10;
 
 /** 서버가 받는 페이지 상한 · 검색어 상한(앞뒤 공백을 지운 뒤) */
 export const PAGE_MAX = 10_000;

@@ -95,7 +95,7 @@ public class NotificationService {
 	// ------------------------------------------------------------ 알림센터 목록 (UI-TP-13)
 
 	/** 한 페이지 기본 크기 · 최대 크기 */
-	static final int PAGE_SIZE = 20;
+	static final int PAGE_SIZE = 10;
 
 	static final int SIZE_MAX = 50;
 
