@@ -41,12 +41,12 @@ class ExtrasApiTest extends IntegrationTest {
 
 		mvc.perform(get("/api/portal/notifications").cookie(loginCookie(A)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.length()").value(2))
-			.andExpect(jsonPath("$[0].notificationId").value(newer))
-			.andExpect(jsonPath("$[0].priority").value("URGENT"))
-			.andExpect(jsonPath("$[0].eventId").doesNotExist())
-			.andExpect(jsonPath("$[1].eventId").value(1001))
-			.andExpect(jsonPath("$[1].read").value(false));
+			.andExpect(jsonPath("$.items.length()").value(2))
+			.andExpect(jsonPath("$.items[0].notificationId").value(newer))
+			.andExpect(jsonPath("$.items[0].priority").value("URGENT"))
+			.andExpect(jsonPath("$.items[0].eventId").doesNotExist())
+			.andExpect(jsonPath("$.items[1].eventId").value(1001))
+			.andExpect(jsonPath("$.items[1].read").value(false));
 
 		mvc.perform(patch("/api/portal/notifications/{id}/read", older).cookie(loginCookie(A)))
 			.andExpect(status().isNoContent());
@@ -72,14 +72,14 @@ class ExtrasApiTest extends IntegrationTest {
 
 		mvc.perform(get("/api/portal/notifications").cookie(loginCookie(A)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.length()").value(1))
-			.andExpect(jsonPath("$[0].eventId").value(eventId))
-			.andExpect(jsonPath("$[0].category").value("APPLICATION"))
-			.andExpect(jsonPath("$[0].priority").value("INFO"))
-			.andExpect(jsonPath("$[0].content").value("[" + eventId + ":가을 쿠폰] 이벤트 신청이 접수되었습니다."))
-			.andExpect(jsonPath("$[0].read").value(false))
-			.andExpect(jsonPath("$[0].chip").value("APPLICATION"))
-			.andExpect(jsonPath("$[0].link").value("/events/" + eventId));
+			.andExpect(jsonPath("$.items.length()").value(1))
+			.andExpect(jsonPath("$.items[0].eventId").value(eventId))
+			.andExpect(jsonPath("$.items[0].category").value("APPLICATION"))
+			.andExpect(jsonPath("$.items[0].priority").value("INFO"))
+			.andExpect(jsonPath("$.items[0].content").value("[" + eventId + ":가을 쿠폰] 이벤트 신청이 접수되었습니다."))
+			.andExpect(jsonPath("$.items[0].read").value(false))
+			.andExpect(jsonPath("$.items[0].chip").value("APPLICATION"))
+			.andExpect(jsonPath("$.items[0].link").value("/events/" + eventId));
 	}
 
 	@Test
@@ -99,33 +99,33 @@ class ExtrasApiTest extends IntegrationTest {
 
 		mvc.perform(get("/api/portal/notifications").cookie(loginCookie(A)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.length()").value(rows.length))
+			.andExpect(jsonPath("$.items.length()").value(rows.length))
 			// 신청 → 상세(기본 탭 신청 내용), 이벤트가 없으면 읽음만
-			.andExpect(jsonPath("$[0].chip").value("APPLICATION"))
-			.andExpect(jsonPath("$[0].link").value("/events/1001"))
-			.andExpect(jsonPath("$[1].chip").value("APPLICATION"))
-			.andExpect(jsonPath("$[1].link").doesNotExist())
+			.andExpect(jsonPath("$.items[0].chip").value("APPLICATION"))
+			.andExpect(jsonPath("$.items[0].link").value("/events/1001"))
+			.andExpect(jsonPath("$.items[1].chip").value("APPLICATION"))
+			.andExpect(jsonPath("$.items[1].link").doesNotExist())
 			// 이벤트 = HOSTING · EVENT · MAIL(이벤트 있음) → 결과 탭
-			.andExpect(jsonPath("$[2].chip").value("EVENT"))
-			.andExpect(jsonPath("$[2].link").value("/events/1001?tab=result"))
-			.andExpect(jsonPath("$[3].chip").value("EVENT"))
-			.andExpect(jsonPath("$[3].link").value("/events/1001?tab=result"))
-			.andExpect(jsonPath("$[4].chip").value("EVENT"))
-			.andExpect(jsonPath("$[4].link").doesNotExist())
-			.andExpect(jsonPath("$[5].chip").value("EVENT"))
-			.andExpect(jsonPath("$[5].link").value("/events/1001?tab=result"))
-			.andExpect(jsonPath("$[6].chip").doesNotExist())
+			.andExpect(jsonPath("$.items[2].chip").value("EVENT"))
+			.andExpect(jsonPath("$.items[2].link").value("/events/1001?tab=result"))
+			.andExpect(jsonPath("$.items[3].chip").value("EVENT"))
+			.andExpect(jsonPath("$.items[3].link").value("/events/1001?tab=result"))
+			.andExpect(jsonPath("$.items[4].chip").value("EVENT"))
+			.andExpect(jsonPath("$.items[4].link").doesNotExist())
+			.andExpect(jsonPath("$.items[5].chip").value("EVENT"))
+			.andExpect(jsonPath("$.items[5].link").value("/events/1001?tab=result"))
+			.andExpect(jsonPath("$.items[6].chip").doesNotExist())
 			// 리포트는 이벤트와 무관
-			.andExpect(jsonPath("$[7].chip").value("REPORT"))
-			.andExpect(jsonPath("$[7].link").value("/reports"))
+			.andExpect(jsonPath("$.items[7].chip").value("REPORT"))
+			.andExpect(jsonPath("$.items[7].link").value("/reports"))
 			// 운영자 전용 값 · 모르는 값도 목록에는 나온다(칩 · 링크 없음)
-			.andExpect(jsonPath("$[8].category").value("DELAY"))
-			.andExpect(jsonPath("$[8].chip").doesNotExist())
-			.andExpect(jsonPath("$[8].link").doesNotExist())
-			.andExpect(jsonPath("$[9].chip").doesNotExist())
-			.andExpect(jsonPath("$[10].category").value("SLACK"))
-			.andExpect(jsonPath("$[10].chip").doesNotExist())
-			.andExpect(jsonPath("$[10].link").doesNotExist());
+			.andExpect(jsonPath("$.items[8].category").value("DELAY"))
+			.andExpect(jsonPath("$.items[8].chip").doesNotExist())
+			.andExpect(jsonPath("$.items[8].link").doesNotExist())
+			.andExpect(jsonPath("$.items[9].chip").doesNotExist())
+			.andExpect(jsonPath("$.items[10].category").value("SLACK"))
+			.andExpect(jsonPath("$.items[10].chip").doesNotExist())
+			.andExpect(jsonPath("$.items[10].link").doesNotExist());
 	}
 
 	@Test
@@ -134,7 +134,12 @@ class ExtrasApiTest extends IntegrationTest {
 		data.tenant(B, "B사", "ACTIVE", "READY");
 		long bNotification = data.notification(B, null, "INFO", TestData.BASE, "B 전용", false);
 
-		mvc.perform(get("/api/portal/notifications").cookie(loginCookie(A))).andExpect(jsonPath("$.length()").value(0));
+		mvc.perform(get("/api/portal/notifications").cookie(loginCookie(A)))
+			.andExpect(jsonPath("$.items.length()").value(0))
+			.andExpect(jsonPath("$.totalCount").value(0))
+			.andExpect(jsonPath("$.unreadCount").value(0))
+			.andExpect(jsonPath("$.counts.priority.ALL").value(0))
+			.andExpect(jsonPath("$.counts.chip.ALL").value(0));
 		mvc.perform(patch("/api/portal/notifications/{id}/read", bNotification).cookie(loginCookie(A)))
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("NOTIFICATION_NOT_FOUND"));

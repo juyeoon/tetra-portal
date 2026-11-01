@@ -2,12 +2,15 @@ package com.tetra.portal.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import com.tetra.portal.notification.NotificationRules.Chip;
 import com.tetra.portal.notification.NotificationService.Category;
 
-/** UI-TP-13 알림센터 칩 · 이동 경로 규칙과 알림 문구의 이벤트 표기. */
+/** UI-TP-13 알림센터 칩(목록 필터의 category 묶음 포함) · 이동 경로 규칙과 알림 문구의 이벤트 표기. */
 class NotificationRulesTest {
 
 	static String link(String category, Long eventId) {
@@ -51,6 +54,36 @@ class NotificationRulesTest {
 		assertThat(Category.values()).extracting(Enum::name)
 			.containsExactly("APPLICATION", "HOSTING", "EVENT", "ACCOUNT", "PROVISIONING", "MAIL", "DELAY", "SYSTEM",
 					"REPORT");
+	}
+
+	@Test
+	void 칩별_category_묶음() {
+		assertThat(NotificationRules.match(Chip.APPLICATION))
+			.isEqualTo(new NotificationRules.Match(List.of("APPLICATION"), List.of(), List.of()));
+		// 메일은 이벤트가 있을 때만 이벤트 칩
+		assertThat(NotificationRules.match(Chip.EVENT))
+			.isEqualTo(new NotificationRules.Match(List.of("HOSTING", "EVENT"), List.of("MAIL"), List.of()));
+		assertThat(NotificationRules.match(Chip.REPORT))
+			.isEqualTo(new NotificationRules.Match(List.of("REPORT"), List.of(), List.of()));
+	}
+
+	@Test
+	void 칩_묶음은_모든_category와_이벤트_유무에서_chip과_같다() {
+		for (Chip chip : Chip.values()) {
+			NotificationRules.Match m = NotificationRules.match(chip);
+			for (Category c : Category.values()) {
+				String name = c.name();
+				boolean withEvent = m.any().contains(name) || m.withEvent().contains(name);
+				boolean withoutEvent = m.any().contains(name) || m.withoutEvent().contains(name);
+				assertThat(withEvent).as(chip + " / " + name + " 이벤트 있음").isEqualTo(NotificationRules.chip(name, 1043L) == chip);
+				assertThat(withoutEvent).as(chip + " / " + name + " 이벤트 없음").isEqualTo(NotificationRules.chip(name, null) == chip);
+			}
+			// 묶음끼리 겹치지 않는다
+			List<String> all = new ArrayList<>(m.any());
+			all.addAll(m.withEvent());
+			all.addAll(m.withoutEvent());
+			assertThat(all).as(chip.name()).doesNotHaveDuplicates();
+		}
 	}
 
 	@Test
