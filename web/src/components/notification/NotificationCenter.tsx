@@ -37,6 +37,7 @@ import {
   emptyState,
   itemHref,
   pressItem,
+  splitContent,
   type ChipFilter,
   type ChipMenuItem,
   type NotificationFilters,
@@ -135,6 +136,7 @@ function ChipMenu({ value, items, onChange }: { value: ChipFilter; items: ChipMe
 const ROW_SX = {
   width: '100%',
   justifyContent: 'flex-start',
+  alignItems: 'flex-start',
   textAlign: 'left',
   gap: 1.5,
   px: 1.5,
@@ -143,20 +145,59 @@ const ROW_SX = {
   '&:hover': { bgcolor: color.card },
 } as const;
 
-/** 알림 한 줄 — [우선순위] [칩] 내용 · 오른쪽 시각. 경로가 있으면 링크(가운데 클릭 · 새 탭 가능), 없으면 읽음만 */
+/**
+ * 알림 한 줄(Console과 같은 모양) — 첫 줄 [우선순위] [칩] 첫 문장(한 줄 말줄임) · 둘째 줄 나머지(2줄 말줄임) · 오른쪽 시각.
+ * 전체 문구는 마우스를 올리면 보인다. 경로가 있으면 링크(가운데 클릭 · 새 탭 가능), 없으면 읽음만
+ */
 function NotificationRow({ n, onRead }: { n: PortalNotification; onRead: (id: number) => void }) {
   const meta = priorityMeta[n.priority];
+  const { head, rest } = splitContent(n.content);
   const href = itemHref(n);
   const press = (e: MouseEvent) => pressItem(n, e, onRead);
 
   const body = (
     <>
-      <Box aria-label={n.read ? undefined : '안읽음'} sx={{ width: 7, height: 7, flexShrink: 0, bgcolor: n.read ? 'transparent' : tones.blue.dot }} />
-      <StatusChip label={meta.label} tone={meta.tone} />
-      {n.chip && <StatusChip label={CHIP_LABEL[n.chip]} tone="grey" />}
-      <Typography variant="body1" sx={{ flex: 1, minWidth: 0, fontWeight: n.read ? font.weight.regular : font.weight.semibold, color: n.read ? text.secondary : text.primary }}>
-        {n.content}
-      </Typography>
+      {/* 첫 줄(배지 높이) 가운데에 맞춘 안읽음 점 */}
+      <Box
+        aria-label={n.read ? undefined : '안읽음'}
+        sx={{ width: 7, height: 7, mt: `calc((${size.badge} - 7px) / 2)`, flexShrink: 0, bgcolor: n.read ? 'transparent' : tones.blue.dot }}
+      />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* 좁은 화면에서는 첫 문장을 배지 아래 한 줄로 — 배지 옆에 두면 첫 문장이 거의 보이지 않는다 */}
+        <Stack direction="row" useFlexGap spacing={0.75} alignItems="center" sx={{ minWidth: 0, flexWrap: { xs: 'wrap', sm: 'nowrap' }, rowGap: 0.5 }}>
+          <StatusChip label={meta.label} tone={meta.tone} />
+          {n.chip && <StatusChip label={CHIP_LABEL[n.chip]} tone="grey" />}
+          <Typography
+            variant="body1"
+            noWrap
+            title={n.content}
+            sx={{
+              minWidth: 0,
+              flexBasis: { xs: '100%', sm: 'auto' },
+              fontWeight: n.read ? font.weight.regular : font.weight.semibold,
+              color: n.read ? text.secondary : text.primary,
+            }}
+          >
+            {head}
+          </Typography>
+        </Stack>
+        {rest && (
+          <Typography
+            variant="body2"
+            sx={{
+              mt: 0.5,
+              color: text.secondary,
+              overflowWrap: 'anywhere',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {rest}
+          </Typography>
+        )}
+      </Box>
       <Box sx={{ flexShrink: 0, textAlign: 'right' }}>
         <Typography variant="body2" sx={{ color: text.tertiary }}>
           {formatDate(n.occurredAt)}

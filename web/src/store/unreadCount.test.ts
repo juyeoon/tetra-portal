@@ -6,9 +6,14 @@ import {
   badgeText,
   badgeTitle,
   clearUnread,
+  createBatch,
+  createWriteRefresher,
   fetchOnRoute,
+  followUpAfterWrite,
   navAriaLabel,
+  refreshAfterWrite,
   shouldPoll,
+  type Timers,
 } from './unreadCount.ts';
 
 describe('사이드바 안 읽은 알림 배지 — 글자 · 읽기 이름', () => {
@@ -75,5 +80,129 @@ describe('사이드바 안 읽은 알림 배지 — 갱신 판단', () => {
     assert.notDeepEqual(cleared, before);
     // 다시 로그인한 뒤 요청은 반영
     assert.deepEqual(applyUnread(cleared, 4, 2), { count: 2, applied: 4 });
+  });
+});
+
+/** 손으로 시간을 넘기는 타이머 */
+function fakeClock() {
+  let now = 0;
+  let seq = 0;
+  const tasks = new Map<number, { at: number; run: () => void }>();
+  const timers: Timers = {
+    set: (run, ms) => {
+      seq += 1;
+      tasks.set(seq, { at: now + ms, run });
+      return seq;
+    },
+    clear: (id) => {
+      tasks.delete(id as number);
+    },
+  };
+  const advance = (ms: number) => {
+    now += ms;
+    for (const [id, task] of [...tasks].sort((a, b) => a[1].at - b[1].at)) {
+      if (task.at <= now && tasks.has(id)) {
+        tasks.delete(id);
+        task.run();
+      }
+    }
+  };
+  return { timers, advance };
+}
+
+describe('쓰기 요청 뒤 배지 다시 받기', () => {
+  test('쓰기(POST · PUT · PATCH · DELETE)만, 읽음 · 모두 읽음 · 배지 자신 · 로그인 · 로그아웃은 뺀다', () => {
+    assert.equal(refreshAfterWrite('POST', '/events'), true);
+    assert.equal(refreshAfterWrite('PATCH', '/settings/email'), true);
+    assert.equal(refreshAfterWrite('POST', '/reports/3/email'), true);
+    assert.equal(refreshAfterWrite('PUT', '/anything'), true);
+    assert.equal(refreshAfterWrite('DELETE', '/anything'), true);
+    assert.equal(refreshAfterWrite('post', '/events'), true);
+    assert.equal(refreshAfterWrite('GET', '/events'), false);
+    assert.equal(refreshAfterWrite('GET', '/notifications/unread-count'), false);
+    assert.equal(refreshAfterWrite('PATCH', '/notifications/12/read'), false);
+    assert.equal(refreshAfterWrite('PATCH', '/notifications/read-all'), false);
+    assert.equal(refreshAfterWrite('POST', '/auth/login'), false);
+    assert.equal(refreshAfterWrite('POST', '/auth/logout'), false);
+    assert.equal(refreshAfterWrite('PATCH', '/notifications/read-all?x=1'), false);
+  });
+
+  test('이벤트 신청만 한 번 더(응답 뒤 배너 업로드가 끝나야 알림이 생긴다)', () => {
+    assert.equal(followUpAfterWrite('POST', '/events'), true);
+    assert.equal(followUpAfterWrite('PATCH', '/settings/email'), false);
+    assert.equal(followUpAfterWrite('GET', '/events'), false);
+  });
+
+  test('쓰기 뒤 300ms에 refresh, GET · 제외 경로 뒤에는 부르지 않는다', () => {
+    const clock = fakeClock();
+    let calls = 0;
+    const writes = createWriteRefresher(() => (calls += 1), () => true, clock.timers);
+    writes.onResponse('GET', '/events');
+    writes.onResponse('PATCH', '/notifications/7/read');
+    writes.onResponse('PATCH', '/notifications/read-all');
+    writes.onResponse('POST', '/auth/logout');
+    clock.advance(5_000);
+    assert.equal(calls, 0);
+
+    writes.onResponse('PATCH', '/settings/email');
+    clock.advance(299);
+    assert.equal(calls, 0);
+    clock.advance(1);
+    assert.equal(calls, 1);
+  });
+
+  test('몰린 쓰기는 300ms 안이면 한 번으로 묶고, 그 뒤 쓰기는 다시 한 번', () => {
+    const clock = fakeClock();
+    let calls = 0;
+    const writes = createWriteRefresher(() => (calls += 1), () => true, clock.timers);
+    writes.onResponse('PATCH', '/settings/email');
+    clock.advance(100);
+    writes.onResponse('POST', '/reports/3/email');
+    clock.advance(150);
+    writes.onResponse('PATCH', '/settings/email');
+    clock.advance(50);
+    assert.equal(calls, 1);
+    writes.onResponse('PATCH', '/settings/email');
+    clock.advance(300);
+    assert.equal(calls, 2);
+  });
+
+  test('이벤트 신청은 300ms 뒤와 3초 뒤 두 번', () => {
+    const clock = fakeClock();
+    let calls = 0;
+    const writes = createWriteRefresher(() => (calls += 1), () => true, clock.timers);
+    writes.onResponse('POST', '/events');
+    clock.advance(300);
+    assert.equal(calls, 1);
+    clock.advance(2_700);
+    assert.equal(calls, 2);
+  });
+
+  test('로그아웃 상태면 묶지도 부르지도 않고, 그만두면(cancel) 기다리던 것도 버린다', () => {
+    const clock = fakeClock();
+    let calls = 0;
+    let live = false;
+    const writes = createWriteRefresher(() => (calls += 1), () => live, clock.timers);
+    writes.onResponse('POST', '/events');
+    clock.advance(5_000);
+    assert.equal(calls, 0);
+
+    live = true;
+    writes.onResponse('POST', '/events');
+    writes.cancel();
+    clock.advance(5_000);
+    assert.equal(calls, 0);
+  });
+
+  test('createBatch — 첫 요청 뒤 delay에 한 번', () => {
+    const clock = fakeClock();
+    let calls = 0;
+    const batch = createBatch(() => (calls += 1), 300, clock.timers);
+    batch.request();
+    batch.request();
+    clock.advance(300);
+    batch.request();
+    clock.advance(300);
+    assert.equal(calls, 2);
   });
 });
