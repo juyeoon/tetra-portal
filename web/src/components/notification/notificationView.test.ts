@@ -1,20 +1,25 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { NotificationChip, NotificationPriority, PortalNotification } from '../../types/index.ts';
+import type { NotificationChip, NotificationPage, NotificationPriority, PortalNotification } from '../../types/index.ts';
 import { priorityMeta } from '../../utils/status.ts';
 import {
   NOTIFICATION_CHIPS,
   PRIORITY_FILTERS,
+  canReadAll,
   chipButtonLabel,
   chipMenuItems,
-  countByChip,
-  countByPriority,
+  emptyState,
   itemHref,
+  listQuery,
+  pageToFix,
+  paramsFromView,
   pressItem,
   readOptimistically,
-  visibleNotifications,
+  viewFromParams,
+  withFilters,
   withRead,
   type NotificationFilters,
+  type NotificationView,
 } from './notificationView.ts';
 
 const item = (
@@ -45,21 +50,33 @@ const ITEMS = [
   item(5, 'WARNING', false, '2026-10-21T09:00:00+09:00', null, '정기 점검 안내'),
 ];
 
-const ids = (list: PortalNotification[]) => list.map((n) => n.notificationId);
-
-/** 기본 조건(전체 · 전체 · 안 읽은 것만 끔 · 검색 없음)에서 일부만 바꾼 조건 */
+/** 처음 열 때 조건(전체 · 전체 · 안 읽은 것만 켬 · 검색 없음)에서 일부만 바꾼 조건 */
 const filters = (change: Partial<NotificationFilters> = {}): NotificationFilters => ({
   priority: 'ALL',
   chip: 'ALL',
-  unreadOnly: false,
+  unreadOnly: true,
   query: '',
   ...change,
 });
 
-const visibleIds = (change: Partial<NotificationFilters> = {}) => ids(visibleNotifications(ITEMS, filters(change)));
+const view = (change: Partial<NotificationFilters> = {}, page = 1): NotificationView => ({ filters: filters(change), page });
 
-describe('우선순위 세그먼트 · 건수', () => {
-  test('전체 · 긴급 · 주의 · 정보 — 안읽음은 세그먼트에 없다', () => {
+/** 서버 응답 한 페이지(건수는 테스트에 쓰지 않는 값) */
+const pageOf = (change: Partial<NotificationPage> = {}): NotificationPage => ({
+  items: ITEMS,
+  page: 1,
+  size: 20,
+  totalCount: ITEMS.length,
+  totalPages: 1,
+  unreadCount: 3,
+  counts: { priority: { ALL: 3, URGENT: 1, WARNING: 1, INFO: 1 }, chip: { ALL: 3, APPLICATION: 0, EVENT: 2, REPORT: 0 } },
+  ...change,
+});
+
+const parse = (query: string) => viewFromParams(new URLSearchParams(query));
+
+describe('우선순위 세그먼트 · 분류 드롭다운', () => {
+  test('세그먼트는 전체 · 긴급 · 주의 · 정보 — 안읽음은 세그먼트에 없다', () => {
     assert.deepEqual(
       PRIORITY_FILTERS.map((p) => p.label),
       ['전체', '긴급', '주의', '정보'],
@@ -73,58 +90,23 @@ describe('우선순위 세그먼트 · 건수', () => {
     assert.equal(priorityMeta.WARNING.label, '주의');
   });
 
-  test('우선순위 건수는 안 읽은 것만 조건을 따른다', () => {
-    assert.deepEqual(countByPriority(ITEMS, { unreadOnly: false }), { ALL: 5, URGENT: 1, WARNING: 2, INFO: 2 });
-    assert.deepEqual(countByPriority(ITEMS, { unreadOnly: true }), { ALL: 3, URGENT: 1, WARNING: 1, INFO: 1 });
-    assert.deepEqual(countByPriority([], { unreadOnly: true }), { ALL: 0, URGENT: 0, WARNING: 0, INFO: 0 });
-  });
-
-  test('우선순위 건수는 고른 분류 · 검색어와 무관', () => {
-    assert.deepEqual(countByPriority(ITEMS, filters({ chip: 'REPORT', query: '봄 쿠폰' })), countByPriority(ITEMS, filters()));
-    assert.deepEqual(countByPriority(ITEMS, filters({ chip: 'EVENT', unreadOnly: true, query: '없는 말' })), { ALL: 3, URGENT: 1, WARNING: 1, INFO: 1 });
-  });
-});
-
-describe('분류 드롭다운 · 건수', () => {
-  test('메뉴는 전체 + 신청 · 이벤트 · 리포트(콘솔과 같은 순서)', () => {
+  test('분류 메뉴는 전체 + 신청 · 이벤트 · 리포트(콘솔과 같은 순서)', () => {
     assert.deepEqual(
       NOTIFICATION_CHIPS.map((c) => c.label),
       ['전체', '신청', '이벤트', '리포트'],
     );
   });
 
-  test('버튼 글자 — 기본 분류: 전체, 고르면 분류: 이름', () => {
+  test('분류 버튼 글자 — 기본 분류: 전체, 고르면 분류: 이름', () => {
     assert.equal(chipButtonLabel('ALL'), '분류: 전체');
     assert.equal(chipButtonLabel('APPLICATION'), '분류: 신청');
     assert.equal(chipButtonLabel('EVENT'), '분류: 이벤트');
     assert.equal(chipButtonLabel('REPORT'), '분류: 리포트');
   });
 
-  test('분류 건수는 지금 우선순위 · 안 읽은 것만 조건을 따른다', () => {
-    assert.deepEqual(countByChip(ITEMS, { priority: 'ALL', unreadOnly: false }), { ALL: 5, APPLICATION: 1, EVENT: 2, REPORT: 1 });
-    assert.deepEqual(countByChip(ITEMS, { priority: 'WARNING', unreadOnly: false }), { ALL: 2, APPLICATION: 1, EVENT: 0, REPORT: 0 });
-    assert.deepEqual(countByChip(ITEMS, { priority: 'ALL', unreadOnly: true }), { ALL: 3, APPLICATION: 0, EVENT: 2, REPORT: 0 });
-    assert.deepEqual(countByChip(ITEMS, { priority: 'INFO', unreadOnly: true }), { ALL: 1, APPLICATION: 0, EVENT: 1, REPORT: 0 });
-  });
-
-  test('분류 건수는 고른 분류 · 검색어와 무관', () => {
-    const counts = (f: NotificationFilters) => chipMenuItems(ITEMS, f).map((c) => c.count);
-    assert.deepEqual(counts(filters({ chip: 'REPORT', query: '봄 쿠폰' })), counts(filters()));
-  });
-
-  test('칩이 없는 알림은 분류 전체에만 세고, 분류를 고르면 안 보인다', () => {
-    // 5번(주의 · 안 읽음 · 칩 없음)만 남는 조건
-    assert.deepEqual(countByChip(ITEMS, { priority: 'WARNING', unreadOnly: true }), { ALL: 1, APPLICATION: 0, EVENT: 0, REPORT: 0 });
-    assert.ok(visibleIds().includes(5));
-    for (const chip of ['APPLICATION', 'EVENT', 'REPORT'] as const) {
-      assert.ok(!visibleIds({ chip }).includes(5), chip);
-    }
-  });
-
-  test('0건 항목은 흐리게(dim)만 — 메뉴에 그대로 있고 고르면 빈 목록', () => {
-    const items = chipMenuItems(ITEMS, filters({ priority: 'WARNING' }));
+  test('분류 메뉴 건수는 서버 건수 그대로, 0건은 흐리게(dim)만 — 메뉴에서 빠지지 않는다', () => {
     assert.deepEqual(
-      items.map((c) => [c.key, c.count, c.dim]),
+      chipMenuItems({ ALL: 2, APPLICATION: 1, EVENT: 0, REPORT: 0 }).map((c) => [c.key, c.count, c.dim]),
       [
         ['ALL', 2, false],
         ['APPLICATION', 1, false],
@@ -132,35 +114,79 @@ describe('분류 드롭다운 · 건수', () => {
         ['REPORT', 0, true],
       ],
     );
-    assert.deepEqual(visibleIds({ priority: 'WARNING', chip: 'EVENT' }), []);
   });
 });
 
-describe('보이는 목록', () => {
-  test('최신순, 같은 시각은 나중 알림 먼저', () => {
-    assert.deepEqual(visibleIds(), [4, 3, 2, 1, 5]);
+describe('주소 쿼리', () => {
+  test('처음 열면(쿼리 없음) 안 읽은 것만 켬 · 1페이지', () => {
+    assert.deepEqual(parse(''), view());
   });
 
-  test('우선순위 AND 분류 AND 안 읽은 것만 AND 검색', () => {
-    assert.deepEqual(visibleIds({ unreadOnly: true }), [3, 1, 5]);
-    assert.deepEqual(visibleIds({ chip: 'EVENT', unreadOnly: true }), [3, 1]);
-    assert.deepEqual(visibleIds({ priority: 'INFO', chip: 'EVENT' }), [3]);
-    assert.deepEqual(visibleIds({ priority: 'INFO', unreadOnly: true }), [3]);
-    assert.deepEqual(visibleIds({ priority: 'INFO', chip: 'REPORT', unreadOnly: true }), []);
-    assert.deepEqual(visibleIds({ priority: 'WARNING', unreadOnly: true }), [5]);
-    assert.deepEqual(visibleIds({ priority: 'URGENT', chip: 'EVENT', unreadOnly: true, query: '봄 쿠폰' }), [1]);
-    assert.deepEqual(visibleIds({ chip: 'EVENT', unreadOnly: true, query: '여름' }), []);
+  test('조건 · 페이지를 주소에 남기고 그대로 읽는다(기본값은 뺀다)', () => {
+    const v = view({ priority: 'URGENT', chip: 'EVENT', unreadOnly: false, query: '봄 쿠폰' }, 3);
+    const params = paramsFromView(v);
+    assert.equal(params.toString(), 'priority=URGENT&chip=EVENT&unreadOnly=false&q=%EB%B4%84+%EC%BF%A0%ED%8F%B0&page=3');
+    assert.deepEqual(viewFromParams(params), v);
+    assert.equal(paramsFromView(view()).toString(), '');
   });
 
-  test('검색은 내용만, 앞뒤 공백 · 대소문자 무시', () => {
-    assert.deepEqual(visibleIds({ query: '  fall SALE ' }), [3]);
-    assert.deepEqual(visibleIds({ query: '없는 말' }), []);
+  test('검색어는 입력 그대로 남기고(입력 중 뒤 공백 유지), 공백뿐이면 뺀다', () => {
+    assert.equal(paramsFromView(view({ query: '봄 ' })).get('q'), '봄 ');
+    assert.equal(paramsFromView(view({ query: '   ' })).has('q'), false);
   });
 
-  test('원본 배열은 바꾸지 않는다', () => {
-    const before = ids(ITEMS);
-    visibleNotifications(ITEMS, filters());
-    assert.deepEqual(ids(ITEMS), before);
+  test('모르는 값은 기본값으로 본다', () => {
+    assert.deepEqual(parse('priority=urgent&chip=TENANT&unreadOnly=no&page=abc'), view());
+    for (const page of ['0', '-1', '1.5', '10001']) {
+      assert.equal(parse(`page=${page}`).page, 1, page);
+    }
+    assert.equal(parse('page=10000').page, 10000);
+    assert.equal(parse(`q=${'가'.repeat(120)}`).filters.query.length, 100);
+  });
+
+  test('조건을 바꾸면 1페이지로', () => {
+    assert.deepEqual(withFilters(view({}, 4), { chip: 'REPORT' }), view({ chip: 'REPORT' }, 1));
+    assert.deepEqual(withFilters(view({ priority: 'INFO' }, 2), { unreadOnly: false }), view({ priority: 'INFO', unreadOnly: false }, 1));
+  });
+});
+
+describe('목록 요청', () => {
+  test('처음 열면 안 읽은 것만 · 1페이지 · 20건', () => {
+    assert.equal(listQuery(view()).toString(), 'unreadOnly=true&page=1&size=20');
+  });
+
+  test('전체는 보내지 않고 검색어는 앞뒤 공백을 지워 보낸다', () => {
+    const q = listQuery(view({ priority: 'WARNING', chip: 'APPLICATION', unreadOnly: false, query: '  쿠폰 ' }, 2));
+    assert.deepEqual(Object.fromEntries(q), { priority: 'WARNING', chip: 'APPLICATION', unreadOnly: 'false', q: '쿠폰', page: '2', size: '20' });
+    assert.equal(listQuery(view({ query: '   ' })).has('q'), false);
+  });
+
+  test('범위 밖 페이지면 마지막 페이지로, 맞는 알림이 없으면 1페이지로', () => {
+    assert.equal(pageToFix(pageOf({ items: [], page: 5, totalPages: 3 })), 3);
+    assert.equal(pageToFix(pageOf({ items: [], page: 2, totalCount: 0, totalPages: 0 })), 1);
+    assert.equal(pageToFix(pageOf({ items: [], page: 1, totalCount: 0, totalPages: 0 })), null);
+    assert.equal(pageToFix(pageOf({ page: 3, totalPages: 3 })), null);
+  });
+});
+
+describe('빈 목록 · 모두 읽음', () => {
+  test('빈 목록 문구 3가지 — 검색어 > 안 읽은 것만 > 그 밖', () => {
+    assert.deepEqual(emptyState(filters({ query: '쿠폰' })), { title: '검색 결과가 없습니다', showAll: false });
+    assert.deepEqual(emptyState(filters()), {
+      title: '안 읽은 알림이 없습니다',
+      description: "'안 읽은 것만'을 끄면 읽은 알림도 볼 수 있습니다.",
+      showAll: true,
+    });
+    assert.deepEqual(emptyState(filters({ unreadOnly: false })), { title: '알림이 없습니다', showAll: false });
+    assert.equal(emptyState(filters({ query: '   ' })).title, '안 읽은 알림이 없습니다');
+  });
+
+  test('모두 읽음은 안 읽은 알림이 있을 때만(조건 · 지금 페이지와 무관), 요청 중에는 막는다', () => {
+    assert.equal(canReadAll(pageOf({ unreadCount: 3 }), false), true);
+    assert.equal(canReadAll(pageOf({ unreadCount: 0 }), false), false);
+    assert.equal(canReadAll(pageOf({ unreadCount: 3 }), true), false);
+    // 지금 목록이 비어 있어도(다른 조건) 안 읽은 알림이 있으면 누를 수 있다
+    assert.equal(canReadAll(pageOf({ items: [], totalCount: 0, totalPages: 0, unreadCount: 2 }), false), true);
   });
 });
 

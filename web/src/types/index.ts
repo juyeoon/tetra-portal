@@ -155,7 +155,7 @@ export type NotificationPriority = 'URGENT' | 'WARNING' | 'INFO';
 /** 알림 칩(종류) — 신청 / 이벤트 / 리포트 */
 export type NotificationChip = 'APPLICATION' | 'EVENT' | 'REPORT';
 
-/** 알림 (GET /notifications) — 최신순. 칩 · 이동 경로는 서버가 계산한다 */
+/** 알림 한 건 (GET /notifications의 items) — 칩 · 이동 경로는 서버가 계산한다 */
 export interface PortalNotification {
   notificationId: number;
   /** 관련 이벤트 — 없으면 null */
@@ -170,6 +170,29 @@ export interface PortalNotification {
   chip: NotificationChip | null;
   /** 누르면 갈 화면 경로('/'로 시작) — 없으면 null(읽음만) */
   link: string | null;
+}
+
+/**
+ * 알림 목록 한 페이지 (GET /notifications?priority&chip&unreadOnly&q&page&size) — 최신순(같은 시각은 나중 알림 먼저).
+ * 건수 키는 화면 필터 키(ALL + 값)와 같다
+ */
+export interface NotificationPage {
+  items: PortalNotification[];
+  /** 1부터. totalPages보다 크면 items가 비어 있다 */
+  page: number;
+  size: number;
+  /** 조건(검색 포함)에 맞는 전체 수 */
+  totalCount: number;
+  /** 0이면 맞는 알림 없음 */
+  totalPages: number;
+  /** 안 읽은 알림 수 — 조건과 무관([모두 읽음] 버튼) */
+  unreadCount: number;
+  counts: {
+    /** 안 읽은 것만만 따른다(분류 · 검색과 무관) */
+    priority: Record<'ALL' | NotificationPriority, number>;
+    /** 우선순위 · 안 읽은 것만을 따른다(고른 분류 · 검색과 무관). 칩이 없는 알림은 ALL에만 */
+    chip: Record<'ALL' | NotificationChip, number>;
+  };
 }
 
 /** 리포트 (GET /reports) — 최근 생성 먼저 */

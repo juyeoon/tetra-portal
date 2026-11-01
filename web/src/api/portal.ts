@@ -1,4 +1,4 @@
-import type { DownloadLink, EventDetail, EventMonitoring, EventResult, EventSummary, EventType, MonitoringEventList, Plan, PortalNotification, PortalSettings, Report, ScreenSetting } from '@/types';
+import type { DownloadLink, EventDetail, EventMonitoring, EventResult, EventSummary, EventType, MonitoringEventList, NotificationPage, Plan, PortalSettings, Report, ScreenSetting } from '@/types';
 import { api } from './client';
 
 /* ---------- 요금제 · 이벤트 (UI-TP-05 ~ 10) ---------- */
@@ -56,9 +56,13 @@ export const getEventMonitoring = (eventId: number) => api<EventMonitoring>('GET
 
 /* ---------- 알림 · 리포트 · 설정 (UI-TP-12 ~ 14) ---------- */
 
-export const listNotifications = () => api<PortalNotification[]>('GET', '/notifications');
+/** 조건에 맞는 한 페이지와 화면 건수 — 쿼리는 notificationView.listQuery로 만든다 */
+export const listNotifications = (query: URLSearchParams) => api<NotificationPage>('GET', `/notifications?${query}`);
 
 export const markNotificationRead = (notificationId: number) => api<void>('PATCH', `/notifications/${notificationId}/read`);
+
+/** 그 테넌트의 안 읽은 알림 전부 읽음(지금 페이지만이 아님). 안 읽은 알림이 없어도 204 */
+export const markAllNotificationsRead = () => api<void>('PATCH', '/notifications/read-all');
 
 export const listReports = () => api<Report[]>('GET', '/reports');
 

@@ -27,7 +27,8 @@
 | `POST /api/portal/events` (multipart) | 쿠키 | 신청 — `application` 파트(JSON, **Content-Type: application/json**) + `banner` 파트(PNG · JPEG ≤ 2MB) → 202 `{eventId, applicationStatus: APPLYING}`. 배너가 올라가면 APPLIED, 실패하면 APPLY_FAILED(원인은 진행 기록) — 상세로 확인. 검사 실패는 400 `fields`에 항목별 사유 |
 | `GET /api/portal/events/{eventId}/result` | 쿠키 | 결과 탭 — `state`(READY · AGGREGATING · IN_PROGRESS · END_FAILED)에 따라 지표 · 구성 · 분 단위 추이 / 실패 원인. Console 결과와 같은 판정 · 숫자 |
 | `GET /api/portal/events/{eventId}/result/history-csv` | 쿠키 | `{url, expiresAt}` — S3 presigned URL(5분). 열면 `issuance-history-{id}.csv`로 저장. READY 아니면 409 `RESULT_NOT_READY`. 로컬은 받을 수 없는 가짜 주소 |
-| `GET /api/portal/notifications` · `PATCH …/{id}/read` | 쿠키 | 알림 최신순 · 읽음 표시(204) |
+| `GET /api/portal/notifications?priority&chip&unreadOnly&q&page&size` | 쿠키 | 알림센터 한 페이지 — 최신순(같은 시각은 나중 알림 먼저), 조건은 모두 AND. `priority` URGENT · WARNING · INFO, `chip` APPLICATION · EVENT · REPORT(없으면 전체), `unreadOnly`(기본 false), `q` 내용 부분 일치(100자 이하), `page` 1부터(10000 이하), `size` 1~50(기본 20) — 범위 밖 값은 400 `fields`. 응답 `{items, page, size, totalCount, totalPages, unreadCount, counts: {priority, chip}}` — 우선순위 건수는 안 읽은 것만만, 분류 건수는 우선순위 · 안 읽은 것만을 따른다(고른 분류 · 검색과 무관). 범위 밖 page는 빈 `items` |
+| `PATCH /api/portal/notifications/{id}/read` · `PATCH …/read-all` | 쿠키 | 읽음 표시(204, 이미 읽었어도) · 모두 읽음 — 그 테넌트의 안 읽은 알림 전부(204, 없어도) |
 | `GET /api/portal/reports` · `GET …/{id}/download` · `POST …/{id}/email` | 쿠키 | 리포트 목록 · 다운로드 링크(presigned 5분) · 로그인 이메일로 안내 메일(204, SES 실패 503) |
 | `GET /api/portal/settings` · `PATCH …/email {enabled}` | 쿠키 | `{emailEnabled, slackAvailable: false}` |
 | `POST /api/portal/support-mail` `{from, subject, body}` | 공개 | 운영팀 주소(`MAIL_SUPPORT_TO`)로만, Reply-To = from → 204 / 503 |
