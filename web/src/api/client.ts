@@ -27,6 +27,12 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
+/** 응답을 받은 요청마다(성공 · 실패 모두, 네트워크 오류는 빼고) — UnreadCountContext가 등록한다(쓰기 뒤 배지 다시 받기) */
+let onResponse: ((method: string, path: string) => void) | null = null;
+export function setResponseListener(listener: ((method: string, path: string) => void) | null) {
+  onResponse = listener;
+}
+
 interface Options {
   /** JSON 본문 */
   json?: unknown;
@@ -48,6 +54,7 @@ export async function api<T>(method: string, path: string, { json, form, redirec
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', '서버에 연결하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
   }
+  onResponse?.(method, path);
 
   if (response.status === 204) return undefined as T;
 

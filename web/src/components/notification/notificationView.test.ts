@@ -15,6 +15,7 @@ import {
   paramsFromView,
   pressItem,
   readOptimistically,
+  splitContent,
   viewFromParams,
   withFilters,
   withRead,
@@ -187,6 +188,40 @@ describe('빈 목록 · 모두 읽음', () => {
     assert.equal(canReadAll(pageOf({ unreadCount: 3 }), true), false);
     // 지금 목록이 비어 있어도(다른 조건) 안 읽은 알림이 있으면 누를 수 있다
     assert.equal(canReadAll(pageOf({ items: [], totalCount: 0, totalPages: 0, unreadCount: 2 }), false), true);
+  });
+});
+
+describe('항목 문구 — 첫 문장 · 나머지', () => {
+  test('두 문장이면 첫 문장 / 나머지', () => {
+    assert.deepEqual(splitContent('[1043:봄 쿠폰] 이벤트 신청이 접수되지 않았습니다. 다시 신청해 주세요. 원인: 배너 업로드 시간 초과'), {
+      head: '[1043:봄 쿠폰] 이벤트 신청이 접수되지 않았습니다.',
+      rest: '다시 신청해 주세요. 원인: 배너 업로드 시간 초과',
+    });
+  });
+
+  test('한 문장이면 나머지 없음(둘째 줄을 그리지 않는다)', () => {
+    assert.deepEqual(splitContent('[1043:봄 쿠폰] 이벤트 신청이 접수되었습니다.'), { head: '[1043:봄 쿠폰] 이벤트 신청이 접수되었습니다.', rest: '' });
+    // 문장 끝 부호 뒤 공백만 있으면 그대로 한 문장
+    assert.deepEqual(splitContent('[1043:봄 쿠폰] 호스팅을 시작했습니다. '), { head: '[1043:봄 쿠폰] 호스팅을 시작했습니다.', rest: '' });
+  });
+
+  test('콜론이 있는 문장(반려 사유 · 원인)은 나머지로, 이벤트 표기의 콜론 · 소수점 · 시각은 나누지 않는다', () => {
+    assert.deepEqual(splitContent('[1043:봄 쿠폰] 이벤트 신청이 반려되었습니다. 반려 사유: 이벤트 기간에 정기 점검이 있습니다.'), {
+      head: '[1043:봄 쿠폰] 이벤트 신청이 반려되었습니다.',
+      rest: '반려 사유: 이벤트 기간에 정기 점검이 있습니다.',
+    });
+    assert.deepEqual(splitContent('[1043:쿠폰 2.0] 입장이 열렸습니다(10:00).'), { head: '[1043:쿠폰 2.0] 입장이 열렸습니다(10:00).', rest: '' });
+  });
+
+  test('! · ? 도 문장 끝, 마침표가 없으면 통째로 첫 줄', () => {
+    assert.deepEqual(splitContent('품절되었습니다! 결과를 확인하세요?  곧 집계합니다'), { head: '품절되었습니다!', rest: '결과를 확인하세요?  곧 집계합니다' });
+    assert.deepEqual(splitContent('정기 점검 안내'), { head: '정기 점검 안내', rest: '' });
+  });
+
+  test('빈 문자열 · 앞뒤 공백', () => {
+    assert.deepEqual(splitContent(''), { head: '', rest: '' });
+    assert.deepEqual(splitContent('   '), { head: '', rest: '' });
+    assert.deepEqual(splitContent('  첫 문장입니다.   둘째 문장입니다.  '), { head: '첫 문장입니다.', rest: '둘째 문장입니다.' });
   });
 });
 

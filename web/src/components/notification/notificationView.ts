@@ -152,6 +152,18 @@ export function canReadAll(data: NotificationPage, pending: boolean): boolean {
   return !pending && data.unreadCount > 0;
 }
 
+/**
+ * 문구를 첫 문장(첫 줄)과 나머지(둘째 줄, 2줄 말줄임)로 — 문장 끝(. ! ?) 뒤 공백에서 한 번 나눈다(Console splitContent와 같은 규칙).
+ * 예: '[1043:봄 쿠폰] 이벤트 신청이 반려되었습니다. 반려 사유: 기간이 겹칩니다.' → 첫 문장 / '반려 사유: 기간이 겹칩니다.'
+ * 앞뒤 공백은 먼저 지운다. 소수점(2.0) · 시각(10:00) · 콜론은 나누지 않는다
+ */
+export function splitContent(content: string): { head: string; rest: string } {
+  const text = content.trim();
+  const end = /[.!?]\s+/.exec(text);
+  if (!end) return { head: text, rest: '' };
+  return { head: text.slice(0, end.index + 1), rest: text.slice(end.index + end[0].length).trim() };
+}
+
 /** 이동 경로 — 같은 앱 안의 경로('/'로 시작, '//'는 아님)만 링크로. 없으면 null(누르면 읽음만) */
 export function itemHref(n: PortalNotification): string | null {
   const link = n.link;
