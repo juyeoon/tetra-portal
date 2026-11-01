@@ -144,7 +144,12 @@ public class NotificationService {
 	public record NotificationPage(List<NotificationItem> items, @Schema(description = "1부터") int page, int size,
 			@Schema(description = "조건(검색 포함)에 맞는 전체 수") long totalCount,
 			@Schema(description = "0이면 맞는 알림 없음. page가 이보다 크면 items가 비어 있다") int totalPages,
-			@Schema(description = "안 읽은 알림 수(조건과 무관) — [모두 읽음] 버튼") long unreadCount, Counts counts) {
+			@Schema(description = "안 읽은 알림 수(조건과 무관) — [모두 읽음] 버튼 · 사이드바 배지. GET /unread-count와 같은 값") long unreadCount,
+			Counts counts) {
+	}
+
+	/** 사이드바 배지 */
+	public record UnreadCount(@Schema(description = "안 읽은 알림 수") long count) {
 	}
 
 	public record Counts(
@@ -159,9 +164,15 @@ public class NotificationService {
 	public NotificationPage list(ListCondition c) {
 		Page<TenantNotification> found = notifications.findAll(where(c),
 				PageRequest.of(c.page() - 1, c.size(), LATEST_FIRST));
-		List<CountGroup> groups = notifications.countGroups();
 		return new NotificationPage(found.getContent().stream().map(NotificationService::item).toList(), c.page(),
-				c.size(), found.getTotalElements(), found.getTotalPages(), unreadCount(groups), counts(groups, c));
+				c.size(), found.getTotalElements(), found.getTotalPages(), unreadCount(),
+				counts(notifications.countGroups(), c));
+	}
+
+	/** 안 읽은 알림 수 — 사이드바 배지(GET /unread-count)와 목록 응답 unreadCount가 함께 쓴다. 인덱스(is_read, occurred_at)로 센다 */
+	@Transactional(readOnly = true)
+	public long unreadCount() {
+		return notifications.countUnread();
 	}
 
 	@Transactional
@@ -223,10 +234,6 @@ public class NotificationService {
 	/** 검색어의 ! · % · _를 글자 그대로 찾게 한다 */
 	static String escapeLike(String q) {
 		return q.replace("!", "!!").replace("%", "!%").replace("_", "!_");
-	}
-
-	private static long unreadCount(List<CountGroup> groups) {
-		return groups.stream().filter(g -> !g.getRead()).mapToLong(CountGroup::getTotal).sum();
 	}
 
 	/**

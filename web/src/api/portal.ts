@@ -61,6 +61,9 @@ export const listNotifications = (query: URLSearchParams) => api<NotificationPag
 
 export const markNotificationRead = (notificationId: number) => api<void>('PATCH', `/notifications/${notificationId}/read`);
 
+/** 사이드바 배지 — 목록 응답 unreadCount와 같은 값 */
+export const getUnreadNotificationCount = () => api<{ count: number }>('GET', '/notifications/unread-count');
+
 /** 그 테넌트의 안 읽은 알림 전부 읽음(지금 페이지만이 아님). 안 읽은 알림이 없어도 204 */
 export const markAllNotificationsRead = () => api<void>('PATCH', '/notifications/read-all');
 

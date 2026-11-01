@@ -92,6 +92,7 @@ npm run dev          # http://localhost:5174
 | 리포트 `/reports` | [다운로드] → 5분짜리 다운로드 링크(로컬은 가짜 주소), [이메일 전송] → 로그인 계정 주소로 전송 토스트(로컬은 `api/build/local-mail/`) |
 | 알림 센터 `/notifications` | 처음 열면 '안 읽은 것만' 켬 — 항목 클릭 시 읽음 + 이동(목록에서는 다음 조회 때 빠짐), 우선순위 4칸 건수(안 읽은 것만을 따름), 분류 메뉴 건수(우선순위 · 안 읽은 것만을 따름), 검색은 입력이 멈추고 0.3초 뒤, 10건씩 페이지(1페이지뿐이면 숨김), 조건 · 페이지가 주소에 남음(새로고침 · 뒤로 가기), [모두 읽음](안 읽은 알림이 없으면 비활성), 빈 목록에서 [모든 알림 보기] |
 | 설정 `/settings` | 이메일 수신 토글(새로고침해도 유지), Slack "준비 중" |
+| 사이드바 알림 센터 배지 | 안 읽은 알림 수(0이면 없음, 100 이상 99+), 알림센터에 있으면 남색 배지 · 마우스를 올리면 "안 읽은 알림 N건". 읽음 · [모두 읽음] 직후, 라우트 이동, 보이는 동안 60초마다(탭이 숨겨지면 멈춤) 갱신 |
 | 사용자 메뉴 (우측 상단) | 설정 이동, 로그아웃 → `/login` |
 
 ---
@@ -214,7 +215,7 @@ Console의 신청 내용(OPS-03-2·04-2) · 알림센터 · 리포트는 "Portal
 | 이벤트 목록 · 상세 | `GET /events` · `GET /events/{id}` (+ 플랜 표시 `GET /plans`) |
 | 이벤트 신청 | `GET /plans` · `POST /events` (multipart: `application` JSON + `banner` 파일) |
 | 결과 탭 | `GET /events/{id}/result` · CSV `GET /events/{id}/result/history-csv` (다운로드 링크) |
-| 알림 센터 | `GET /notifications?…`(조건 · 페이지 · 건수) · `PATCH /notifications/{id}/read` · `PATCH /notifications/read-all` |
+| 알림 센터 | `GET /notifications?…`(조건 · 페이지 · 건수) · `PATCH /notifications/{id}/read` · `PATCH /notifications/read-all` · 사이드바 배지 `GET /notifications/unread-count` |
 | 리포트 | `GET /reports` · `GET /reports/{id}/download` · `POST /reports/{id}/email` |
 | 설정 | `GET /settings` · `PATCH /settings/email` |
 

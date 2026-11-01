@@ -6,6 +6,7 @@ import { CssBaseline, ThemeProvider } from '@mui/material';
 import App from './App';
 import { AuthProvider } from './store/AuthContext';
 import { ToastProvider } from './store/ToastContext';
+import { UnreadCountProvider } from './store/UnreadCountContext';
 import theme from './theme/theme';
 
 
@@ -15,9 +16,11 @@ createRoot(document.getElementById('root')!).render(
       <CssBaseline />
       <BrowserRouter>
         <AuthProvider>
-          <ToastProvider>
-            <App />
-          </ToastProvider>
+          <UnreadCountProvider>
+            <ToastProvider>
+              <App />
+            </ToastProvider>
+          </UnreadCountProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>

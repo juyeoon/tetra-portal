@@ -250,4 +250,52 @@ class NotificationListApiTest extends IntegrationTest {
 		assertThat(data.count("SELECT COUNT(*) FROM t_" + A + ".tenant_notification WHERE is_read = 1")).isEqualTo(4);
 	}
 
+	// ---------------------------------------------------------------- 안 읽은 수 (사이드바 배지)
+
+	private long unreadCount(String tenantId) throws Exception {
+		String body = mvc.perform(get("/api/portal/notifications/unread-count").cookie(loginCookie(tenantId)))
+			.andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getContentAsString(StandardCharsets.UTF_8);
+		return JsonPath.parse(body).read("$.count", Long.class);
+	}
+
+	@Test
+	void unreadCountCountsOnlyThisTenant() throws Exception {
+		data.tenant(A, "A사", "ACTIVE", "READY");
+		data.tenant(B, "B사", "ACTIVE", "READY");
+		assertThat(unreadCount(A)).isZero();
+
+		for (int i = 0; i < 3; i++) {
+			data.notification(A, null, "INFO", TestData.BASE.plusMinutes(i), "A 안읽음 " + i, false);
+		}
+		data.notification(A, null, "URGENT", TestData.BASE, "A 읽음", true);
+		data.notification(B, null, "INFO", TestData.BASE, "B 안읽음 1", false);
+		data.notification(B, null, "WARNING", TestData.BASE, "B 안읽음 2", false);
+
+		assertThat(unreadCount(A)).isEqualTo(3);
+		assertThat(unreadCount(B)).isEqualTo(2);
+	}
+
+	@Test
+	void unreadCountDropsAfterReadAndReadAllAndMatchesList() throws Exception {
+		sixRows(); // 안 읽음 r1 · r3 · r4 · r5
+		long r1 = json("q", "r1").read("$.items[0].notificationId", Long.class);
+
+		assertThat(unreadCount(A)).isEqualTo(4);
+		// 목록 unreadCount와 같은 값 — 목록 조건과 무관
+		for (String[] params : new String[][] { {}, { "unreadOnly", "true", "priority", "INFO" }, { "chip", "REPORT", "q", "없는 말" } }) {
+			assertThat(json(params).read("$.unreadCount", Long.class)).as(List.of(params).toString()).isEqualTo(4L);
+		}
+
+		mvc.perform(patch("/api/portal/notifications/{id}/read", r1).cookie(loginCookie(A))).andExpect(status().isNoContent());
+		assertThat(unreadCount(A)).isEqualTo(3);
+		assertThat(json().read("$.unreadCount", Long.class)).isEqualTo(3L);
+
+		mvc.perform(patch("/api/portal/notifications/read-all").cookie(loginCookie(A))).andExpect(status().isNoContent());
+		assertThat(unreadCount(A)).isZero();
+		assertThat(json().read("$.unreadCount", Long.class)).isZero();
+	}
+
 }

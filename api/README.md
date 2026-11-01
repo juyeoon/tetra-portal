@@ -28,6 +28,7 @@
 | `GET /api/portal/events/{eventId}/result` | 쿠키 | 결과 탭 — `state`(READY · AGGREGATING · IN_PROGRESS · END_FAILED)에 따라 지표 · 구성 · 분 단위 추이 / 실패 원인. Console 결과와 같은 판정 · 숫자 |
 | `GET /api/portal/events/{eventId}/result/history-csv` | 쿠키 | `{url, expiresAt}` — S3 presigned URL(5분). 열면 `issuance-history-{id}.csv`로 저장. READY 아니면 409 `RESULT_NOT_READY`. 로컬은 받을 수 없는 가짜 주소 |
 | `GET /api/portal/notifications?priority&chip&unreadOnly&q&page&size` | 쿠키 | 알림센터 한 페이지 — 최신순(같은 시각은 나중 알림 먼저), 조건은 모두 AND. `priority` URGENT · WARNING · INFO, `chip` APPLICATION · EVENT · REPORT(없으면 전체), `unreadOnly`(기본 false), `q` 내용 부분 일치(100자 이하), `page` 1부터(10000 이하), `size` 1~50(기본 10) — 범위 밖 값은 400 `fields`. 응답 `{items, page, size, totalCount, totalPages, unreadCount, counts: {priority, chip}}` — 우선순위 건수는 안 읽은 것만만, 분류 건수는 우선순위 · 안 읽은 것만을 따른다(고른 분류 · 검색과 무관). 범위 밖 page는 빈 `items` |
+| `GET /api/portal/notifications/unread-count` | 쿠키 | 사이드바 배지 `{count}` — 안 읽은 알림 수(인덱스 `(is_read, occurred_at)`로 센다). 목록 응답 `unreadCount`와 같은 메서드 |
 | `PATCH /api/portal/notifications/{id}/read` · `PATCH …/read-all` | 쿠키 | 읽음 표시(204, 이미 읽었어도) · 모두 읽음 — 그 테넌트의 안 읽은 알림 전부(204, 없어도) |
 | `GET /api/portal/reports` · `GET …/{id}/download` · `POST …/{id}/email` | 쿠키 | 리포트 목록 · 다운로드 링크(presigned 5분) · 로그인 이메일로 안내 메일(204, SES 실패 503) |
 | `GET /api/portal/settings` · `PATCH …/email {enabled}` | 쿠키 | `{emailEnabled, slackAvailable: false}` |
