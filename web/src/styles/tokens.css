@@ -200,6 +200,14 @@
   --sidebar-active-text: var(--color-navy);
   --sidebar-active-icon: var(--color-point-deep);   /* 흰 배경 위라 진한 페리윙클 */
   --sidebar-pattern-opacity: 0.22;                  /* 하단 물결 무늬 (흰 선 PNG) */
+  /* 알림 센터 메뉴의 안 읽은 알림 수 — 동그라미(100 이상 99+). 크기는 화면설계 그대로라 --type-scale을 따르지 않는다 */
+  --sidebar-badge-h: 22px;                          /* 높이 = 최소 폭 */
+  --sidebar-badge-pad-x: 7px;
+  --sidebar-badge-fs: 12px;
+  --sidebar-badge-bg: var(--color-peri);            /* 남색 바탕 위 */
+  --sidebar-badge-fg: var(--color-navy);
+  --sidebar-badge-active-bg: var(--color-navy);     /* 활성 메뉴(흰 배경) 위 */
+  --sidebar-badge-active-fg: #ffffff;
 
   /* 상단바 (경로 · 페이지 제목 · 사용자) */
   --topbar-bg: #ffffff;

@@ -38,6 +38,10 @@ public interface TenantNotificationRepository
 
 	}
 
+	/** 안 읽은 알림 수 — is_read = 0 비교라 인덱스(is_read, occurred_at)만 읽는다 */
+	@Query("select count(n) from TenantNotification n where n.read = false")
+	long countUnread();
+
 	/** 읽음 표시 — 이미 읽었어도 1행(멱등). tenant_id도 WHERE에 넣는다. */
 	@Modifying(flushAutomatically = true, clearAutomatically = true)
 	@Query("update TenantNotification n set n.read = true where n.notificationId = :id and n.tenantId = :tenantId")

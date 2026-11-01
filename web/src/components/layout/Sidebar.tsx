@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { Box, ButtonBase, Typography } from '@mui/material';
+import { Box, ButtonBase, Tooltip, Typography } from '@mui/material';
 import ListAltOutlinedIcon from '@mui/icons-material/ListAltOutlined';
 import EditCalendarOutlinedIcon from '@mui/icons-material/EditCalendarOutlined';
 import ShowChartOutlinedIcon from '@mui/icons-material/ShowChartOutlined';
@@ -9,6 +9,8 @@ import NotificationsNoneOutlinedIcon from '@mui/icons-material/NotificationsNone
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import logoWhite from '@/assets/logo-white.png';
 import wavePattern from '@/assets/wave-pattern.png';
+import { useUnreadCount } from '@/store/UnreadCountContext';
+import { badgeText, badgeTitle, navAriaLabel } from '@/store/unreadCount';
 import { font, layout, onNavy, radius, sidebar, size, type } from '@/theme/theme';
 
 interface NavItem {
@@ -18,6 +20,8 @@ interface NavItem {
   icon: ReactNode;
   /** NavLink 기본 매칭 대신 쓸 활성 조건 */
   isActive?: (pathname: string) => boolean;
+  /** 안 읽은 알림 수 배지 */
+  unreadBadge?: boolean;
 }
 
 /** 화면설계서 공통 UI 요소 — 사이드바 내비게이션 순서 */
@@ -26,7 +30,7 @@ const NAV: NavItem[] = [
   { label: '이벤트 신청', to: '/events/new', icon: <EditCalendarOutlinedIcon /> },
   { label: '모니터링', to: '/monitoring', icon: <ShowChartOutlinedIcon /> },
   { label: '리포트', to: '/reports', icon: <AssessmentOutlinedIcon /> },
-  { label: '알림 센터', to: '/notifications', icon: <NotificationsNoneOutlinedIcon /> },
+  { label: '알림 센터', to: '/notifications', icon: <NotificationsNoneOutlinedIcon />, unreadBadge: true },
   { label: '설정', to: '/settings', icon: <SettingsOutlinedIcon /> },
 ];
 
@@ -43,6 +47,25 @@ const itemSx = {
   '& svg': { fontSize: size.iconMd, color: sidebar.icon, transition: 'color .15s' },
 } as const;
 
+/** 안 읽은 알림 수 동그라미 — 활성 메뉴(흰 배경)에서는 남색으로 바뀐다(메뉴 sx의 '&.active .unread-badge') */
+const badgeSx = {
+  ml: 'auto',
+  boxSizing: 'border-box',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: sidebar.badgeH,
+  minWidth: sidebar.badgeH,
+  px: sidebar.badgePadX,
+  borderRadius: sidebar.badgeH,
+  bgcolor: sidebar.badgeBg,
+  color: sidebar.badgeFg,
+  fontSize: sidebar.badgeFs,
+  fontWeight: font.weight.bold,
+  lineHeight: 1,
+  transition: 'background-color .15s, color .15s',
+} as const;
+
 /**
  * 남색 사이드바 (240px) — 콘솔과 같은 틀(흰 로고 + 영문 표기, 같은 여백·메뉴 크기).
  * 구분: 활성 메뉴는 흰 배경 + 남색 글자 + 페리윙클 아이콘, 하단에 로그인 화면과 같은 물결 무늬.
@@ -50,6 +73,7 @@ const itemSx = {
  */
 export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { pathname } = useLocation();
+  const { count: unread } = useUnreadCount();
 
   return (
     <Box
@@ -109,6 +133,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             );
           }
           const forcedActive = item.isActive?.(pathname);
+          const badge = item.unreadBadge ? badgeText(unread) : null;
           return (
             <ButtonBase
               key={item.to}
@@ -117,6 +142,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               end
               onClick={onNavigate}
               className={forcedActive ? 'active' : undefined}
+              aria-label={item.unreadBadge ? navAriaLabel(unread) : undefined}
               sx={{
                 ...itemSx,
                 '&:hover': { bgcolor: sidebar.hover, color: onNavy.primary },
@@ -125,11 +151,19 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                   color: sidebar.activeText,
                   fontWeight: font.weight.semibold,
                   '& svg': { color: sidebar.activeIcon },
+                  '& .unread-badge': { bgcolor: sidebar.badgeActiveBg, color: sidebar.badgeActiveFg },
                 },
               }}
             >
               {item.icon}
               {item.label}
+              {badge && (
+                <Tooltip title={badgeTitle(unread!)} placement="right">
+                  <Box component="span" aria-hidden className="unread-badge" sx={badgeSx}>
+                    {badge}
+                  </Box>
+                </Tooltip>
+              )}
             </ButtonBase>
           );
         })}

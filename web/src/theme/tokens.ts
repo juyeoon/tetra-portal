@@ -150,6 +150,14 @@ export const sidebar = {
   activeText: v('sidebar-active-text'),
   activeIcon: v('sidebar-active-icon'),
   patternOpacity: v('sidebar-pattern-opacity'),
+  /** 알림 센터 메뉴의 안 읽은 알림 수 */
+  badgeH: v('sidebar-badge-h'),
+  badgePadX: v('sidebar-badge-pad-x'),
+  badgeFs: v('sidebar-badge-fs'),
+  badgeBg: v('sidebar-badge-bg'),
+  badgeFg: v('sidebar-badge-fg'),
+  badgeActiveBg: v('sidebar-badge-active-bg'),
+  badgeActiveFg: v('sidebar-badge-active-fg'),
 };
 
 export const layout = {

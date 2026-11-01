@@ -17,6 +17,7 @@ import com.tetra.portal.notification.NotificationRules.Chip;
 import com.tetra.portal.notification.NotificationService.ListCondition;
 import com.tetra.portal.notification.NotificationService.NotificationPage;
 import com.tetra.portal.notification.NotificationService.Priority;
+import com.tetra.portal.notification.NotificationService.UnreadCount;
 import com.tetra.portal.tenancy.TenantRouter;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -53,6 +54,13 @@ public class NotificationController {
 					+ NotificationService.PAGE_SIZE) int size) {
 		ListCondition condition = new ListCondition(priority, chip, unreadOnly, q, page, size);
 		return router.inTenant(CurrentTenant.id(jwt), () -> service.list(condition));
+	}
+
+	@Operation(summary = "안 읽은 알림 수", description = "사이드바 배지. 목록 응답 unreadCount와 같은 값")
+	@ApiErrorCodes({ ErrorCode.TENANT_NOT_READY })
+	@GetMapping("/unread-count")
+	public UnreadCount unreadCount(@Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
+		return router.inTenant(CurrentTenant.id(jwt), () -> new UnreadCount(service.unreadCount()));
 	}
 
 	@Operation(summary = "읽음 표시", description = "이미 읽은 알림이어도 204")
