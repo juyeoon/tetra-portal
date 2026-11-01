@@ -97,7 +97,8 @@ class ExtrasApiTest extends IntegrationTest {
 			data.notification(A, eventId, rows[i][0], "INFO", TestData.BASE.plusMinutes(rows.length - i), rows[i][0], false);
 		}
 
-		mvc.perform(get("/api/portal/notifications").cookie(loginCookie(A)))
+		// 11건 — 기본 크기(10)보다 많아 한 페이지에 다 받는다
+		mvc.perform(get("/api/portal/notifications").param("size", "20").cookie(loginCookie(A)))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.items.length()").value(rows.length))
 			// 신청 → 상세(기본 탭 신청 내용), 이벤트가 없으면 읽음만

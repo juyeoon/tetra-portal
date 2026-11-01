@@ -65,7 +65,7 @@ const view = (change: Partial<NotificationFilters> = {}, page = 1): Notification
 const pageOf = (change: Partial<NotificationPage> = {}): NotificationPage => ({
   items: ITEMS,
   page: 1,
-  size: 20,
+  size: 10,
   totalCount: ITEMS.length,
   totalPages: 1,
   unreadCount: 3,
@@ -151,13 +151,13 @@ describe('주소 쿼리', () => {
 });
 
 describe('목록 요청', () => {
-  test('처음 열면 안 읽은 것만 · 1페이지 · 20건', () => {
-    assert.equal(listQuery(view()).toString(), 'unreadOnly=true&page=1&size=20');
+  test('처음 열면 안 읽은 것만 · 1페이지 · 10건', () => {
+    assert.equal(listQuery(view()).toString(), 'unreadOnly=true&page=1&size=10');
   });
 
   test('전체는 보내지 않고 검색어는 앞뒤 공백을 지워 보낸다', () => {
     const q = listQuery(view({ priority: 'WARNING', chip: 'APPLICATION', unreadOnly: false, query: '  쿠폰 ' }, 2));
-    assert.deepEqual(Object.fromEntries(q), { priority: 'WARNING', chip: 'APPLICATION', unreadOnly: 'false', q: '쿠폰', page: '2', size: '20' });
+    assert.deepEqual(Object.fromEntries(q), { priority: 'WARNING', chip: 'APPLICATION', unreadOnly: 'false', q: '쿠폰', page: '2', size: '10' });
     assert.equal(listQuery(view({ query: '   ' })).has('q'), false);
   });
 

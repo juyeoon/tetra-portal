@@ -77,29 +77,38 @@ class NotificationListApiTest extends IntegrationTest {
 			ids.add(data.notification(A, null, "INFO", TestData.BASE.plusMinutes(i / 2), "알림 " + i, false));
 		}
 
+		// 기본 10건 — 25건이면 3페이지
 		list().andExpect(status().isOk())
-			.andExpect(jsonPath("$.items.length()").value(20))
+			.andExpect(jsonPath("$.items.length()").value(10))
 			.andExpect(jsonPath("$.items[0].notificationId").value(ids.get(24)))
 			.andExpect(jsonPath("$.items[1].notificationId").value(ids.get(23)))
-			.andExpect(jsonPath("$.items[19].notificationId").value(ids.get(5)))
+			.andExpect(jsonPath("$.items[9].notificationId").value(ids.get(15)))
 			.andExpect(jsonPath("$.page").value(1))
-			.andExpect(jsonPath("$.size").value(20))
+			.andExpect(jsonPath("$.size").value(10))
 			.andExpect(jsonPath("$.totalCount").value(25))
-			.andExpect(jsonPath("$.totalPages").value(2));
+			.andExpect(jsonPath("$.totalPages").value(3));
 		list("page", "2").andExpect(status().isOk())
+			.andExpect(jsonPath("$.items.length()").value(10))
+			.andExpect(jsonPath("$.items[0].notificationId").value(ids.get(14)))
+			.andExpect(jsonPath("$.items[9].notificationId").value(ids.get(5)))
+			.andExpect(jsonPath("$.page").value(2));
+		list("page", "3").andExpect(status().isOk())
 			.andExpect(jsonPath("$.items.length()").value(5))
 			.andExpect(jsonPath("$.items[0].notificationId").value(ids.get(4)))
 			.andExpect(jsonPath("$.items[4].notificationId").value(ids.get(0)))
-			.andExpect(jsonPath("$.page").value(2));
-		list("page", "3", "size", "10").andExpect(status().isOk())
-			.andExpect(jsonPath("$.items.length()").value(5))
+			.andExpect(jsonPath("$.page").value(3))
 			.andExpect(jsonPath("$.totalPages").value(3));
 		// 범위 밖 — 빈 목록, 전체 수 · 페이지 수는 그대로(화면이 마지막 페이지로 고친다)
-		list("page", "4", "size", "10").andExpect(status().isOk())
+		list("page", "4").andExpect(status().isOk())
 			.andExpect(jsonPath("$.items.length()").value(0))
 			.andExpect(jsonPath("$.page").value(4))
 			.andExpect(jsonPath("$.totalCount").value(25))
 			.andExpect(jsonPath("$.totalPages").value(3));
+		// size를 주면 그 크기로
+		list("page", "2", "size", "20").andExpect(status().isOk())
+			.andExpect(jsonPath("$.items.length()").value(5))
+			.andExpect(jsonPath("$.size").value(20))
+			.andExpect(jsonPath("$.totalPages").value(2));
 	}
 
 	@Test
@@ -167,7 +176,7 @@ class NotificationListApiTest extends IntegrationTest {
 		assertThat(visible("chip", "APPLICATION")).containsExactly("a1", "a2");
 		assertThat(visible("chip", "EVENT")).containsExactly("h1", "e1", "e2", "m1");
 		assertThat(visible("chip", "REPORT")).containsExactly("p1");
-		assertThat(visible()).hasSize(rows.length);
+		assertThat(json().read("$.totalCount", Integer.class)).isEqualTo(rows.length);
 		// 건수도 같은 규칙
 		assertThat(counts(json(), "chip"))
 			.isEqualTo(Map.of("ALL", rows.length, "APPLICATION", 2, "EVENT", 4, "REPORT", 1));
