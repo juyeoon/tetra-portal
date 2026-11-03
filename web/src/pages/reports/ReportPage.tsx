@@ -14,7 +14,7 @@ import { text } from '@/theme/theme';
 import type { Report } from '@/types';
 import { openDownload } from '@/utils/format';
 
-/** UI-TP-12 리포트 — 감사 로그 다운로드 · 이메일 전송. 리포트는 매월 자동 생성 */
+/** UI-TP-12 리포트 — 감사 로그 다운로드 · 이메일 전송. 리포트는 이벤트가 끝날 때와 매월 자동 생성 */
 export default function ReportPage() {
   const toast = useToast();
   const account = useAccount();
@@ -48,12 +48,12 @@ export default function ReportPage() {
       ) : !reports ? (
         <LoadingView />
       ) : reports.length === 0 ? (
-        <StateMessage icon={<AssessmentOutlinedIcon />} tone="grey" title="생성된 리포트가 없습니다" description="리포트는 매월 자동으로 생성됩니다." />
+        <StateMessage icon={<AssessmentOutlinedIcon />} tone="grey" title="생성된 리포트가 없습니다" description="리포트는 이벤트가 끝날 때와 매월 자동으로 생성됩니다." />
       ) : (
         <>
           <ReportTable reports={reports} onDownload={download} onSendEmail={send} />
           <Typography variant="body2" sx={{ mt: 2, color: text.tertiary }}>
-            ※ 리포트는 매월 자동으로 생성되며, 이메일은 로그인 계정({account.email})으로 전송됩니다.
+            ※ 리포트는 이벤트가 끝날 때와 매월 자동으로 생성되며, 이메일은 로그인 계정({account.email})으로 전송됩니다.
           </Typography>
         </>
       )}
