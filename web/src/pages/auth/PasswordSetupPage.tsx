@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogContent, Stack, TextField, Typography } from '@mui/material';
 import CheckCircleOutlineRoundedIcon from '@mui/icons-material/CheckCircleOutlineRounded';
 import CheckRoundedIcon from '@mui/icons-material/CheckRounded';
 import RadioButtonUncheckedRoundedIcon from '@mui/icons-material/RadioButtonUncheckedRounded';
 import logo from '@/assets/logo-navy.png';
 import FormField from '@/components/common/FormField';
-import { setupPassword, verifyPasswordLink, type PasswordLink } from '@/api/auth';
+import { setupPassword, verifyPasswordLink } from '@/api/auth';
 import { ApiError, errorMessage } from '@/api/client';
 import { useToast } from '@/store/ToastContext';
 import { color, font, radius, size, text, tones, type } from '@/theme/theme';
+import { readPasswordLink } from './passwordLink';
 
 /** 포털 메뉴 없이 단독 페이지 */
 function Shell({ children }: { children: ReactNode }) {
@@ -34,20 +35,13 @@ function Shell({ children }: { children: ReactNode }) {
 const MIN_LENGTH = 8;
 const MAX_LENGTH = 64;
 
-/** 주소의 t · exp · sig. 하나라도 없으면 null (만료 화면) */
-function readLink(params: URLSearchParams): PasswordLink | null {
-  const t = params.get('t');
-  const exp = Number(params.get('exp'));
-  const sig = params.get('sig');
-  return t && sig && Number.isInteger(exp) && exp > 0 ? { t, exp, sig } : null;
-}
-
-/** UI-TP-04 비밀번호 설정 — Console이 보낸 메일 링크(?t=&exp=&sig=)로 진입. 들어오면 링크를 확인해 이메일을 보여 준다 */
+/** UI-TP-04 비밀번호 설정 — Console이 보낸 메일 링크(#t=&exp=&sig= 또는 ?t=&exp=&sig=)로 진입. 들어오면 링크를 확인해 이메일을 보여 준다 */
 export default function PasswordSetupPage() {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
+  const location = useLocation();
   const toast = useToast();
-  const link = useMemo(() => readLink(params), [params]);
+  /** 처음 렌더 때 한 번만 읽는다 (아래에서 주소를 지움). 하나라도 없으면 null (만료 화면) */
+  const [link] = useState(() => readPasswordLink(location.hash, location.search));
   /** 확인 전 null */
   const [email, setEmail] = useState<string | null>(null);
   const [expired, setExpired] = useState(!link);
@@ -57,6 +51,12 @@ export default function PasswordSetupPage() {
   const [done, setDone] = useState(false);
   /** 서버가 돌려준 항목별 사유 (400) */
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // 서명이 브라우저 기록 · Referer에 남지 않게 주소를 /password/setup만 남긴다 (링크 확인 요청보다 먼저).
+  // 새로 고침하면 값이 없어 만료 화면 — 메일 링크를 다시 누르면 된다
+  useEffect(() => {
+    if (location.hash || location.search) navigate(location.pathname, { replace: true });
+  }, [location.hash, location.search, location.pathname, navigate]);
 
   useEffect(() => {
     if (!link) return;
