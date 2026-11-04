@@ -120,7 +120,7 @@ class MonitoringServiceTest {
 		assertThat(ended.series()).isNull();
 
 		// TEST-LEAD 원래: verify(collector, times(1)).collect(eq(TENANT), eq(1L), eq(START.minusMinutes(60)), anyLong());
-		verify(collector, times(1)).collect(eq(TENANT), eq(1L), eq(START.minusMinutes(5)), anyLong()); // TEST-LEAD
+		verify(collector, times(1)).collect(eq(TENANT), eq(1L), eq(START.minusMinutes(15)), anyLong()); // TEST-LEAD
 	}
 
 	@Test
@@ -374,7 +374,7 @@ class MonitoringServiceTest {
 	void 진행_중_오늘_예정_최근_종료_순서이고_내일_예정과_8일_전_종료는_뺀다() {
 		var live = view(1, NOW.minusMinutes(10), NOW.plusMinutes(30), EventStatus.OPEN, HostingStatus.HOSTING);
 		// TEST-LEAD 원래: var entry = view(2, NOW.plusMinutes(20), NOW.plusMinutes(90), EventStatus.OPEN, HostingStatus.HOSTING);
-		var entry = view(2, NOW.plusMinutes(3), NOW.plusMinutes(90), EventStatus.OPEN, HostingStatus.HOSTING); // TEST-LEAD
+		var entry = view(2, NOW.plusMinutes(10), NOW.plusMinutes(90), EventStatus.OPEN, HostingStatus.HOSTING); // TEST-LEAD
 		var todayLater = view(3, NOW.plusHours(6), NOW.plusHours(7), EventStatus.SCHEDULED, HostingStatus.DEPLOYED);
 		var todaySooner = view(4, NOW.plusHours(2), NOW.plusHours(3), EventStatus.SCHEDULED, HostingStatus.DEPLOYED);
 		var tomorrow = view(5, NOW.plusDays(1), NOW.plusDays(1).plusHours(1), EventStatus.SCHEDULED, HostingStatus.PENDING);
@@ -398,7 +398,7 @@ class MonitoringServiceTest {
 	@Test
 	void 기본_선택은_진행_중_입장_중_가까운_예정_최근_종료_순() {
 		// TEST-LEAD 원래: var entry = view(2, NOW.plusMinutes(20), NOW.plusMinutes(90), EventStatus.OPEN, HostingStatus.HOSTING);
-		var entry = view(2, NOW.plusMinutes(3), NOW.plusMinutes(90), EventStatus.OPEN, HostingStatus.HOSTING); // TEST-LEAD
+		var entry = view(2, NOW.plusMinutes(10), NOW.plusMinutes(90), EventStatus.OPEN, HostingStatus.HOSTING); // TEST-LEAD
 		var today = view(4, NOW.plusHours(2), NOW.plusHours(3), EventStatus.SCHEDULED, HostingStatus.DEPLOYED);
 		var ended = view(6, NOW.minusDays(1), NOW.minusDays(1).plusHours(1), EventStatus.EXPIRED, HostingStatus.ENDED);
 		var ended2 = view(9, NOW.minusDays(2), NOW.minusDays(2).plusHours(1), EventStatus.EXPIRED, HostingStatus.ENDED);

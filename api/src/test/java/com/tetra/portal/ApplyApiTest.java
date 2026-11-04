@@ -189,7 +189,7 @@ class ApplyApiTest extends IntegrationTest {
 			.andExpect(jsonPath("$.code").value("INVALID_INPUT"))
 			.andExpect(jsonPath("$.fields.endAt").exists())
 			// TEST-LEAD 원래: .andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 이벤트 시작 100분 전까지여야 합니다."))
-			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 이벤트 시작 25분 전까지여야 합니다.")) // TEST-LEAD
+			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 이벤트 시작 35분 전까지여야 합니다.")) // TEST-LEAD
 			.andExpect(jsonPath("$.fields.trafficPlanCode").value("선택할 수 없는 요금제입니다."))
 			.andExpect(jsonPath("$.fields.endpointUrl").exists());
 		assertThat(data.count("SELECT COUNT(*) FROM tetra_platform.event_registry")).isZero();
@@ -201,12 +201,12 @@ class ApplyApiTest extends IntegrationTest {
 		data.tenant(A, "A사", "ACTIVE", "READY");
 		String hostingStart = "\"hostingStartAt\":\"" + iso(START.minusHours(2)) + "\"";
 		// TEST-LEAD 원래: apply(A, application(Map.of(hostingStart, "\"hostingStartAt\":\"" + iso(START.minusMinutes(99)) + "\"")), PNG)
-		apply(A, application(Map.of(hostingStart, "\"hostingStartAt\":\"" + iso(START.minusMinutes(24)) + "\"")), PNG) // TEST-LEAD
+		apply(A, application(Map.of(hostingStart, "\"hostingStartAt\":\"" + iso(START.minusMinutes(34)) + "\"")), PNG) // TEST-LEAD
 			.andExpect(status().isBadRequest())
 			// TEST-LEAD 원래: .andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 이벤트 시작 100분 전까지여야 합니다."));
-			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 이벤트 시작 25분 전까지여야 합니다.")); // TEST-LEAD
+			.andExpect(jsonPath("$.fields.hostingStartAt").value("호스팅 시작은 이벤트 시작 35분 전까지여야 합니다.")); // TEST-LEAD
 		// TEST-LEAD 원래: appliedEventId(apply(A, application(Map.of(hostingStart, "\"hostingStartAt\":\"" + iso(START.minusMinutes(100)) + "\"")), PNG));
-		appliedEventId(apply(A, application(Map.of(hostingStart, "\"hostingStartAt\":\"" + iso(START.minusMinutes(25)) + "\"")), PNG)); // TEST-LEAD
+		appliedEventId(apply(A, application(Map.of(hostingStart, "\"hostingStartAt\":\"" + iso(START.minusMinutes(35)) + "\"")), PNG)); // TEST-LEAD
 	}
 
 	@Test

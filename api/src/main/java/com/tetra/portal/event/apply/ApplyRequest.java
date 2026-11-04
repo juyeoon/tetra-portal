@@ -25,7 +25,7 @@ public record ApplyRequest(
 		@NotNull(message = "필수 입력입니다.") OffsetDateTime startAt,
 		@NotNull(message = "필수 입력입니다.") OffsetDateTime endAt,
 		// TEST-LEAD 원래: @Schema(description = "지금 + 30분 이후, 이벤트 시작 − 100분까지. 호스팅 기간이 이벤트 기간을 덮어야 한다")@NotNull(message = "필수 입력입니다.") OffsetDateTime hostingStartAt,
-		@Schema(description = "지금 + 10분 이후, 이벤트 시작 − 25분까지. 호스팅 기간이 이벤트 기간을 덮어야 한다")@NotNull(message = "필수 입력입니다.") OffsetDateTime hostingStartAt, // TEST-LEAD
+		@Schema(description = "지금 + 10분 이후, 이벤트 시작 − 35분까지. 호스팅 기간이 이벤트 기간을 덮어야 한다")@NotNull(message = "필수 입력입니다.") OffsetDateTime hostingStartAt, // TEST-LEAD
 		@NotNull(message = "필수 입력입니다.") OffsetDateTime hostingEndAt,
 		@Schema(description = "GET /api/portal/plans 의 planCode") @NotBlank(message = "필수 입력입니다.") String trafficPlanCode,
 		@Schema(description = "총 발급 재고 1~999,999,999") @NotNull(message = "필수 입력입니다.") @Min(value = 1, message = "1 이상이어야 합니다.") @Max(value = 999_999_999, message = "999,999,999 이하여야 합니다.") Long stockCount,

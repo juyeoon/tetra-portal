@@ -63,12 +63,12 @@ describe('timelineOf: 문구 · 입장 시각', () => {
   test('호스팅 시작 설명에 실제 입장 시각(시작 − 60분, 한국 시각)', () => {
     const hosting = timelineOf(OPENED_LOGS, START_AT, new Date(START_AT), APPLICANT)[2];
     // TEST-LEAD 원래: assert.equal(hosting.description, '호스팅 시작 시각이 되어 이벤트 페이지(대기방)를 열었습니다. 입장은 10.24 12:00에 열립니다.');
-    assert.equal(hosting.description, '호스팅 시작 시각이 되어 이벤트 페이지(대기방)를 열었습니다. 입장은 10.24 12:55에 열립니다.'); // TEST-LEAD
+    assert.equal(hosting.description, '호스팅 시작 시각이 되어 이벤트 페이지(대기방)를 열었습니다. 입장은 10.24 12:45에 열립니다.'); // TEST-LEAD
     // 자정을 넘으면 전날 날짜
     // TEST-LEAD 원래: const early = timelineOf([log('2026-10-24T23:00:00+09:00', 'HOSTING', 'HOSTING')], '2026-10-25T00:30:00+09:00', new Date(START_AT), APPLICANT);
     const early = timelineOf([log('2026-10-24T23:00:00+09:00', 'HOSTING', 'HOSTING')], '2026-10-25T00:03:00+09:00', new Date(START_AT), APPLICANT); // TEST-LEAD
     // TEST-LEAD 원래: assert.equal(early[0].description, '호스팅 시작 시각이 되어 이벤트 페이지(대기방)를 열었습니다. 입장은 10.24 23:30에 열립니다.');
-    assert.equal(early[0].description, '호스팅 시작 시각이 되어 이벤트 페이지(대기방)를 열었습니다. 입장은 10.24 23:58에 열립니다.'); // TEST-LEAD
+    assert.equal(early[0].description, '호스팅 시작 시각이 되어 이벤트 페이지(대기방)를 열었습니다. 입장은 10.24 23:48에 열립니다.'); // TEST-LEAD
   });
 
   test('처리 주체 · 반려 사유 · 모르는 상태', () => {

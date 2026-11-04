@@ -25,7 +25,7 @@ const toKstIso = (ms: number) => `${new Date(ms + 9 * 3_600_000).toISOString().s
  * issuance-api tetra.session.entry-open-before(values-*.yml 60m)와 같은 값이어야 한다.
  */
 // TEST-LEAD 원래: export const ENTRY_OPEN_LEAD_MINUTES = 60;
-export const ENTRY_OPEN_LEAD_MINUTES = 5; // TEST-LEAD
+export const ENTRY_OPEN_LEAD_MINUTES = 15; // TEST-LEAD
 
 /**
  * 최대 동시 세션 계산에 쓰는 세션 유효 시간(시간). Portal API에 없어 화면 상수로 둔다.

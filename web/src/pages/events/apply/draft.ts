@@ -77,7 +77,7 @@ export const parseStock = (v: string) => {
  * 이벤트 오픈 준비(WF2-2) 스케줄 = 이벤트 시작 − 이 값. 출처: ops-workflows wf1-2/EventRegister.asl.json start_at − 5400000ms.
  */
 // TEST-LEAD 원래: export const HOSTING_LEAD_BEFORE_START = 90;
-export const HOSTING_LEAD_BEFORE_START = 15; // TEST-LEAD
+export const HOSTING_LEAD_BEFORE_START = 25; // TEST-LEAD
 /** 호스팅 시작(WF2-1)과 이벤트 오픈 준비(WF2-2)가 동시에 돌지 않게 두는 간격(분) */
 export const SCHEDULE_GAP = 10;
 /** 호스팅 시작은 지금 + 이 값(분) 이후. 출처: 승인 후 WF1-2 제한 시간(EventRegister.asl.json TimeoutSeconds 1800) */

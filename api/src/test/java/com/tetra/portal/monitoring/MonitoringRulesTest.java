@@ -281,7 +281,8 @@ class MonitoringRulesTest {
 
 	@Test
 	void 호스팅_시작_완료부터_입장_전까지는_입장이_예정() {
-		// 기다리는 구간 — 빈 점(현재)이 없다. 입장 시각 전에 OPEN이 돼도(준비 T−15) 고객 입장은 입장 시각부터
+		// TEST-LEAD 원래: // 기다리는 구간 — 빈 점(현재)이 없다. 입장 시각 전에 OPEN이 돼도(준비 T−90) 고객 입장은 입장 시각부터
+		// 기다리는 구간 — 빈 점(현재)이 없다. 입장 시각 전에 OPEN이 돼도(준비 T−25) 고객 입장은 입장 시각부터 // TEST-LEAD
 		for (EventDetail d : List.of(HOSTED, OPENED)) {
 			assertThat(statuses(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), d)).containsExactly(D, U, U, U, U);
 			assertThat(delays(MonitoringPhase.BEFORE_ENTRY, ENTRY.minusMinutes(1), d)).containsOnly(false);

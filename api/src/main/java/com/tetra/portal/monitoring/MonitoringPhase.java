@@ -32,7 +32,7 @@ public enum MonitoringPhase {
 	 * 입장 = 시작 − 60분. issuance-api entry-open-before · web ENTRY_OPEN_LEAD_MINUTES · Console EntryOpen.ENTRY_OPEN_LEAD와 같은 값
 	 */
 	// TEST-LEAD 원래: static final Duration ENTRY_OPEN_LEAD = Duration.ofMinutes(60);
-	static final Duration ENTRY_OPEN_LEAD = Duration.ofMinutes(5); // TEST-LEAD
+	static final Duration ENTRY_OPEN_LEAD = Duration.ofMinutes(15); // TEST-LEAD
 
 	static LocalDateTime entryAt(LocalDateTime startAt) {
 		return startAt.minus(ENTRY_OPEN_LEAD);
