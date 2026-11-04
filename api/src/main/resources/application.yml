@@ -25,7 +25,10 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
   shutdown: graceful
-  forward-headers-strategy: framework   # ALB가 TLS를 끝내고 X-Forwarded-Proto/For를 붙인다 (인프라 약속 6절)
+  # 끈다(명시). 감사 로그 ip는 앱이 원본 X-Forwarded-For의 맨 오른쪽 값(ALB가 붙인 값)으로 직접 고른다(common/audit/ClientIp).
+  # framework면 ForwardedHeaderFilter가 맨 왼쪽 값(클라이언트가 바꿀 수 있음)을 remoteAddr로 쓰고 헤더를 지운다.
+  # Portal 코드는 요청에서 URL · scheme을 만들지 않는다(메일 주소는 tetra.public-url, 쿠키 Secure는 고정) — 2026-11-04 확인
+  forward-headers-strategy: none
 
 # 프런트용 API 문서(/v3/api-docs, /swagger-ui.html). 기본 꺼짐, dev 등에서 API_DOCS_ENABLED=true로 켠다
 springdoc:

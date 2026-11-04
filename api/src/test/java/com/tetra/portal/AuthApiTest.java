@@ -64,6 +64,17 @@ class AuthApiTest extends IntegrationTest {
 	}
 
 	@Test
+	void loginResponseHasHstsEvenOverPlainHttp() throws Exception {
+		// forward-headers-strategy: none → ALB 뒤 요청은 http로 보인다(MockMvc 기본도 http). 그래도 HSTS가 붙어야 한다
+		data.tenantWithPassword(A, "A사", PASSWORD, "ACTIVE", "READY");
+		String hsts = login(TestData.email(A), PASSWORD).andExpect(status().isOk())
+			.andReturn()
+			.getResponse()
+			.getHeader("Strict-Transport-Security");
+		assertThat(hsts).contains("max-age=31536000").contains("includeSubDomains");
+	}
+
+	@Test
 	void inactiveTenantCanLogIn() throws Exception {
 		// 첫 신청 전 테넌트는 INACTIVE — 로그인해야 신청할 수 있다
 		data.tenantWithPassword(A, "A사", PASSWORD, "INACTIVE", "READY");

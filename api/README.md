@@ -90,7 +90,7 @@ src/main/java/com/tetra/portal/
 ├─ auth/          로그인 · JWT 쿠키 · 로그인한 테넌트(CurrentTenant)
 ├─ account/       비밀번호 설정(Console 링크 검증)
 ├─ config/        설정 · 보안 · 화면 서빙(SpaWebConfig) · API 문서 · 멀티테넌시 연결
-├─ common/        오류 형식(error/) · KST 시간(time/) · DB 오류 판별
+├─ common/        오류 형식(error/) · KST 시간(time/) · 감사 로그(audit/) · DB 오류 판별
 ├─ tenancy/       스키마 라우팅 — TenantRouter.inTenant()만 테넌트 스키마로 들어간다
 ├─ plan/          요금제
 ├─ event/         이벤트 목록 · 상세 (EventReader = 테넌트 스키마 읽기)
@@ -108,3 +108,67 @@ src/main/java/com/tetra/portal/
 - 스키마를 바꾸지 않는다(`ddl-auto=none`, 계정도 DML만). 열이 필요하면 db-schema 저장소 MR.
 - 응답 일시는 ISO `+09:00`, 상태 값은 DB 값 그대로, 오류는 `ErrorResponse {code, message, fields?}`.
 - 비밀 값은 환경 변수로만 받고 로그 · 오류 메시지에 넣지 않는다. `.env`는 커밋하지 않는다.
+- 상태를 바꾸거나 파일 · 링크를 내주는 API를 더하면 감사 허용 목록(`common/audit/AuditActions`)에 넣을지 정한다(아래 절).
+
+---
+
+## 감사 로그 (접속기록)
+
+테넌트 담당자의 Portal 행위를 접속기록(개인정보보호법 안전성 확보조치 기준 제8조)으로 2년 남긴다(2026-11-02 결정). **앱은 stdout에 JSON 한 줄만** 낸다. 옮기는 길은 인프라: CloudWatch Logs 구독 필터 `{ $.log_type = "AUDIT" }` → Firehose → S3 `audit-logs/tenant_id=<id>/dt=<날짜>/` (`infra-aws` `stacks/35-web/audit_logs.tf`). `tenant_id`가 null이거나 12자 형식이 아니면 `tenant_id=none`.
+
+### 남기는 행위 (허용 목록 — 조회 GET · 문의 메일은 안 남김)
+
+| 메서드 · 경로 (`/api/portal` 생략) | action | target | 값을 채우는 곳 |
+|---|---|---|---|
+| POST `/auth/login` | `AUTH_LOGIN` | TENANT(성공 시) | `AuthService.login` — 성공 actor · 실패 `attempt`(가린 이메일) |
+| POST `/auth/logout` | `AUTH_LOGOUT` | TENANT(쿠키가 유효하면) | 인터셉터(JWT `sub`) |
+| POST `/password/setup/verify` | `PASSWORD_LINK_VERIFY` | TENANT(`t` 형식이 맞을 때) | `PasswordSetupController` — 검증 통과 뒤에만 actor · tenant_id |
+| POST `/password/setup` | `PASSWORD_SET` | TENANT(`t` 형식이 맞을 때) | 위와 같음 |
+| POST `/events` | `EVENT_APPLY` | EVENT(반환 id) + `event_id` | `ApplyController` |
+| PATCH `/settings/email` | `SETTINGS_EMAIL_CHANGE` | TENANT | `SettingsService.setEmail` — `changes.email_notification_enabled` before/after(바뀐 경우만) |
+| PATCH `/notifications/{notificationId}/read` | `NOTIFICATION_READ` | NOTIFICATION | 경로 변수 |
+| PATCH `/notifications/read-all` | `NOTIFICATION_READ_ALL` | — | |
+| GET `/events/{eventId}/result/history-csv` | `ISSUANCE_CSV_DOWNLOAD` | EVENT + `event_id` | 경로 변수 (다운로드 = presigned 링크 발급) |
+| GET `/reports/{reportId}/download` | `REPORT_DOWNLOAD` | REPORT | 경로 변수 |
+| POST `/reports/{reportId}/email` | `REPORT_MAIL` | REPORT | 경로 변수 |
+
+- 행위는 MVC가 고른 경로 패턴 + 메서드로 정한다. 보안 체인에서 401 · 403으로 끝난 요청(패턴 없음)은 요청 경로로 같은 표에 맞춰 **actor 없이** 남긴다.
+- 판정: 상태 < 400 → `SUCCESS`, 그 밖 → `FAILURE` + `reason`(오류 응답 본문의 `code` — `GlobalExceptionHandler.respond` · `SecurityConfig.write`에서 넣음). 예외가 필터까지 나오면 `UNHANDLED`.
+
+### 한 줄 (키 순서 고정)
+
+```json
+{"log_type":"AUDIT","audit_id":"<UUID>","time":"2026-11-04T14:03:21.512+09:00","app":"portal","actor":{"type":"TENANT","id":"<tenant_id>"},"ip":"203.0.113.7","user_agent":"Mozilla/5.0 …","action":"SETTINGS_EMAIL_CHANGE","target":{"type":"TENANT","id":"<tenant_id>"},"tenant_id":"<tenant_id>","result":"SUCCESS","changes":{"email_notification_enabled":{"before":false,"after":true}},"request_id":"1-6789abcd-0123456789abcdef01234567"}
+```
+
+| 키 | 값 |
+|---|---|
+| `log_type` · `app` | `"AUDIT"` · `"portal"` |
+| `audit_id` | 줄마다 새 UUID |
+| `time` | 요청 시작 시각, KST ms까지(`Clock.instant()` — `Kst.now()`는 초 단위라 안 씀) |
+| `actor` | `{type:"TENANT", id}` 또는 **null**(로그인 전 · 401 · 403) |
+| `ip` | 원본 `X-Forwarded-For`의 **맨 오른쪽** 값(ALB가 붙인 값). 헤더가 없으면 `getRemoteAddr()`. 64자 |
+| `user_agent` | 512자까지. 헤더가 없으면 키 없음 |
+| `action` · `target` | 위 표. `target`은 없으면 **null**, id는 문자열(64자) |
+| `tenant_id` | JWT `sub` 또는 검증된 `t`. 없으면 **null** |
+| `event_id` | 있을 때만(숫자) |
+| `result` · `reason` | `SUCCESS` / `FAILURE`, `reason`은 실패일 때만 |
+| `changes` | 성공이고 바뀐 필드가 있을 때만. `{필드: {before, after}}`, 문자열 값 200자 |
+| `truncated` | 줄이 8KB를 넘어 `changes`를 비웠을 때만 `true` |
+| `attempt` | 로그인 실패일 때만, 가린 이메일 |
+| `request_id` | `X-Amzn-Trace-Id`의 `Self`(없으면 `Root`) — 형식 `1-{8hex}-{24hex}`가 아니거나 헤더가 없으면 UUID. 요청 동안 MDC `request_id`(일반 로그 패턴에는 안 찍힘) |
+
+### 가림 · 넣지 않는 것
+
+- 이메일 `kim@example.com` → `ki***@ex***.com`(앞 2글자 + `***`, 최상위 도메인만 그대로. 2글자 이하 부분은 1글자 이하만 남김). 이름 `박민호` → `박*호`(`Masking.name` — Portal 줄에는 아직 이름이 없다).
+- **넣지 않는 것**: 비밀번호 · 토큰 · 쿠키 · 링크 `sig` · 요청 본문 · 스택 · 검색어(`q`). 원문 이메일도 안 남긴다.
+- 한 줄 보장: 감사 전용 Jackson 3 매퍼(`AuditJson`) — 들여쓰기 없음, `ESCAPE_NON_ASCII`(한글 · 줄바꿈 · 제어 문자 모두 `\uXXXX`·`\n` → **ASCII 한 줄**), null 필드 제외(actor · target · tenant_id만 null로 남김). 8KB 넘으면 `changes`를 비우고 `"truncated":true`.
+
+### 구조 · 설정
+
+- `common/audit/` — `AuditFilter`(바깥 필터, 보안 체인보다 앞, `/api/portal/**`만 — 헬스 체크 · 화면 파일 제외) · `AuditPrincipalInterceptor`(JWT `sub` 복사) · `AuditWebConfig`(등록) · `AuditContext`(요청 속성 — `AuditContext.current()`는 요청이 아니면 아무것도 안 함) · `AuditActions`(허용 목록) · `AuditEvent` · `AuditJson` · `AuditLogger`(로거 `AUDIT`) · `ClientIp` · `RequestIds` · `Masking`.
+- `logback-spring.xml` — Boot `defaults.xml` · `console-appender.xml` include로 **일반 로그 형식은 그대로**, 로거 `AUDIT`만 `AUDIT_CONSOLE`(`%msg%n`, `additivity=false`).
+- `application.yml` — `server.forward-headers-strategy: none`(명시). `framework`면 `ForwardedHeaderFilter`가 XFF 맨 왼쪽 값(클라이언트가 바꿀 수 있음)을 쓰고 헤더를 지운다. Portal 코드는 요청에서 URL · scheme을 만들지 않는다(메일 주소는 `tetra.public-url`, 쿠키 `Secure`는 고정).
+- 앞단이 바뀌면(CloudFront 추가 등) `ClientIp` 규칙을 같이 바꾼다.
+- 시험: `AuditLogApiTest`(출력 캡처 — 허용 목록 11개 · 안 남는 요청 · 실패 · 401/403 · ip · request_id · 한 줄 · 일반 로그 형식), `common/audit/AuditPartsTest`(가림 · 직렬화 · 8KB).
+- 로컬 확인: `./gradlew bootRun` 뒤 로그인 한 번 → 콘솔에 `{"log_type":"AUDIT",…}` 한 줄.

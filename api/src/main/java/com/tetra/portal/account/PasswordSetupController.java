@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.tetra.portal.common.audit.AuditContext;
 import com.tetra.portal.common.error.ApiErrorCodes;
 import com.tetra.portal.common.error.ErrorCode;
 
@@ -68,7 +69,11 @@ public class PasswordSetupController {
 	@ApiErrorCodes({ ErrorCode.INVALID_INPUT, ErrorCode.PASSWORD_LINK_INVALID })
 	@PostMapping(path = "/verify", consumes = MediaType.APPLICATION_JSON_VALUE)
 	public LinkResponse verify(@Valid @RequestBody LinkRequest request) {
-		return new LinkResponse(service.verify(request.t(), request.exp(), request.sig()));
+		// 감사 줄: t는 형식이 맞을 때만 대상, 검증을 통과해야 행위자 · tenant_id (실패 = 위조 · 만료 링크 흔적)
+		AuditContext audit = AuditContext.current().targetTenant(request.t());
+		LinkResponse response = new LinkResponse(service.verify(request.t(), request.exp(), request.sig()));
+		audit.tenant(request.t());
+		return response;
 	}
 
 	@Operation(summary = "비밀번호 설정", description = "성공 204 → 화면은 로그인으로. 같은 링크는 다시 쓸 수 없다(410)")
@@ -76,7 +81,9 @@ public class PasswordSetupController {
 	@ApiErrorCodes({ ErrorCode.INVALID_INPUT, ErrorCode.PASSWORD_LINK_INVALID })
 	@PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<Void> setup(@Valid @RequestBody SetupRequest request) {
+		AuditContext audit = AuditContext.current().targetTenant(request.t());
 		service.setup(request.t(), request.exp(), request.sig(), request.password());
+		audit.tenant(request.t());
 		return ResponseEntity.noContent().build();
 	}
 

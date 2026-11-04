@@ -27,6 +27,7 @@ import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.security.SecurityRequirement;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import io.swagger.v3.oas.models.servers.Server;
 
 /**
  * 프런트용 API 문서(springdoc). /v3/api-docs(JSON), /swagger-ui.html(화면).
@@ -58,6 +59,8 @@ public class OpenApiConfig {
 	@Bean
 	OpenAPI tetraOpenApi() {
 		return new OpenAPI().info(new Info().title("Tetra Portal API").version("v1").description(DESCRIPTION))
+			// 상대 주소 — forward-headers-strategy: none이라 요청으로 만들면 ALB 뒤에서 http://…가 되어 https 화면의 호출이 막힌다
+			.addServersItem(new Server().url("/"))
 			.components(new Components().addSecuritySchemes(COOKIE_AUTH,
 					new SecurityScheme().type(SecurityScheme.Type.APIKEY)
 						.in(SecurityScheme.In.COOKIE)

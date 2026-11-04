@@ -3,6 +3,7 @@ package com.tetra.portal.auth;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.tetra.portal.common.audit.AuditContext;
 import com.tetra.portal.common.error.ApiException;
 import com.tetra.portal.common.error.ErrorCode;
 import com.tetra.portal.domain.platform.Tenant;
@@ -46,8 +47,11 @@ public class AuthService {
 		String hash = tenant == null || tenant.getPassword() == null ? DUMMY_HASH : tenant.getPassword();
 		boolean matches = passwordEncoder.matches(rawPassword, hash);
 		if (tenant == null || tenant.getPassword() == null || !matches || !tenant.isReady()) {
+			// 감사 줄: 시도한 계정은 가려서만(원문 이메일 · 비밀번호는 남기지 않음)
+			AuditContext.current().loginAttempt(email);
 			throw new ApiException(ErrorCode.LOGIN_FAILED);
 		}
+		AuditContext.current().tenant(tenant.getTenantId()).targetTenant(tenant.getTenantId());
 		return new LoginResult(tenant, tokens.issue(tenant.getTenantId()));
 	}
 

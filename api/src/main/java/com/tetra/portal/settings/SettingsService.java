@@ -3,6 +3,7 @@ package com.tetra.portal.settings;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.tetra.portal.common.audit.AuditContext;
 import com.tetra.portal.common.error.ApiException;
 import com.tetra.portal.common.error.ErrorCode;
 import com.tetra.portal.domain.platform.TenantRepository;
@@ -34,9 +35,14 @@ public class SettingsService {
 
 	@Transactional
 	public SettingsResponse setEmail(String tenantId, boolean enabled) {
+		// 감사 줄 changes의 before — 바꾸기 전 값을 한 번 읽는다
+		boolean before = tenants.findById(tenantId)
+			.orElseThrow(() -> new ApiException(ErrorCode.UNAUTHENTICATED))
+			.isEmailNotificationEnabled();
 		if (tenants.updateEmailNotification(tenantId, enabled) == 0) {
 			throw new ApiException(ErrorCode.UNAUTHENTICATED);
 		}
+		AuditContext.current().change("email_notification_enabled", before, enabled);
 		return new SettingsResponse(enabled, false);
 	}
 
