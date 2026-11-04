@@ -28,16 +28,16 @@ function valid(patch: Partial<ApplyDraft> = {}): ApplyDraft {
 describe('infoErrors: 호스팅 시작 ≤ 이벤트 시작 − 100분', () => {
   test('99분 전 거부 · 100분 전 통과 · 101분 전 통과', () => {
     // TEST-LEAD 원래: assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T08:21' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.');
-    assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T09:36' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 25분 전까지여야 합니다.'); // TEST-LEAD
+    assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T09:26' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 35분 전까지여야 합니다.'); // TEST-LEAD
     // TEST-LEAD 원래: assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T08:20' }), NOW), {});
-    assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T09:35' }), NOW), {}); // TEST-LEAD
+    assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T09:25' }), NOW), {}); // TEST-LEAD
     // TEST-LEAD 원래: assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T08:19' }), NOW), {});
-    assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T09:34' }), NOW), {}); // TEST-LEAD
+    assert.deepEqual(infoErrors(valid({ hostingStart: '2026-11-02T09:24' }), NOW), {}); // TEST-LEAD
   });
 
   test('호스팅 시작 = 이벤트 시작도 거부', () => {
     // TEST-LEAD 원래: assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T10:00' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.');
-    assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T10:00' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 25분 전까지여야 합니다.'); // TEST-LEAD
+    assert.equal(infoErrors(valid({ hostingStart: '2026-11-02T10:00' }), NOW).hostingPeriod, '호스팅 시작은 이벤트 시작 35분 전까지여야 합니다.'); // TEST-LEAD
   });
 });
 

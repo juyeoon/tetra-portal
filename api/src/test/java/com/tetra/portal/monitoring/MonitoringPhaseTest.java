@@ -14,7 +14,7 @@ class MonitoringPhaseTest {
 
 	static final LocalDateTime START = LocalDateTime.of(2026, 10, 27, 15, 0);
 	// TEST-LEAD 원래: static final LocalDateTime ENTRY = START.minusMinutes(60);
-	static final LocalDateTime ENTRY = START.minusMinutes(5); // TEST-LEAD
+	static final LocalDateTime ENTRY = START.minusMinutes(15); // TEST-LEAD
 	static final LocalDateTime END = START.plusMinutes(100);
 
 	static MonitoringPhase at(LocalDateTime now) {

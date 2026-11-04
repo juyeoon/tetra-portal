@@ -24,13 +24,13 @@ class ApplyPeriodRulesTest {
 	@Test
 	void hostingStartMustBeAtLeast100MinutesBeforeEventStart() {
 		// TEST-LEAD 원래: assertThat(errors(START.minusMinutes(99), START))
-		assertThat(errors(START.minusMinutes(24), START)) // TEST-LEAD
+		assertThat(errors(START.minusMinutes(34), START)) // TEST-LEAD
 			// TEST-LEAD 원래: .containsEntry("hostingStartAt", "호스팅 시작은 이벤트 시작 100분 전까지여야 합니다.");
-			.containsEntry("hostingStartAt", "호스팅 시작은 이벤트 시작 25분 전까지여야 합니다."); // TEST-LEAD
+			.containsEntry("hostingStartAt", "호스팅 시작은 이벤트 시작 35분 전까지여야 합니다."); // TEST-LEAD
 		// TEST-LEAD 원래: assertThat(errors(START.minusMinutes(100), START)).isEmpty();
-		assertThat(errors(START.minusMinutes(25), START)).isEmpty(); // TEST-LEAD
+		assertThat(errors(START.minusMinutes(35), START)).isEmpty(); // TEST-LEAD
 		// TEST-LEAD 원래: assertThat(errors(START.minusMinutes(101), START)).isEmpty();
-		assertThat(errors(START.minusMinutes(26), START)).isEmpty(); // TEST-LEAD
+		assertThat(errors(START.minusMinutes(36), START)).isEmpty(); // TEST-LEAD
 		assertThat(errors(START, START)).containsKey("hostingStartAt");
 	}
 

@@ -111,7 +111,7 @@ public class ApplyService {
 	 * 출처: ops-workflows wf1-2/EventRegister.asl.json eventOpenScheduleAt · 입력 검사의 start_at − 5400000ms.
 	 */
 	// TEST-LEAD 원래: static final Duration HOSTING_LEAD_BEFORE_START = Duration.ofMinutes(90);
-	static final Duration HOSTING_LEAD_BEFORE_START = Duration.ofMinutes(15); // TEST-LEAD
+	static final Duration HOSTING_LEAD_BEFORE_START = Duration.ofMinutes(25); // TEST-LEAD
 
 	/** 호스팅 시작(WF2-1)과 이벤트 오픈 준비(WF2-2)가 동시에 돌지 않게 두는 간격. */
 	static final Duration SCHEDULE_GAP = Duration.ofMinutes(10);
