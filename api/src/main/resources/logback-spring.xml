@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  일반 로그는 Boot 기본 그대로(defaults.xml + console-appender.xml = 설정 파일이 없을 때와 같은 CONSOLE · 패턴 · 레벨).
+  감사 로그만 따로: 로거 AUDIT → AUDIT_CONSOLE(메시지만, %msg%n). 메시지는 앱이 만든 JSON 한 줄(ASCII)이라
+  구독 필터 { $.log_type = "AUDIT" }가 이 줄만 골라 Firehose → S3 audit-logs/로 옮긴다(인프라 35-web audit_logs.tf).
+  additivity=false — 같은 줄이 CONSOLE 형식으로 한 번 더 찍히지 않게.
+-->
+<configuration>
+	<include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+	<include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+	<appender name="AUDIT_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%msg%n</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+	</appender>
+
+	<logger name="AUDIT" level="INFO" additivity="false">
+		<appender-ref ref="AUDIT_CONSOLE"/>
+	</logger>
+
+	<root level="INFO">
+		<appender-ref ref="CONSOLE"/>
+	</root>
+</configuration>

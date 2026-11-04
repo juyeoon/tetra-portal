@@ -13,12 +13,15 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
 
 import com.tetra.portal.auth.CookieBearerTokenResolver;
 import com.tetra.portal.auth.JwtTokenService;
+import com.tetra.portal.common.audit.AuditContext;
 import com.tetra.portal.common.error.ErrorCode;
 import com.tetra.portal.common.error.ErrorResponse;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -42,6 +45,10 @@ public class SecurityConfig {
 			.formLogin(AbstractHttpConfigurer::disable)
 			.logout(AbstractHttpConfigurer::disable)
 			.requestCache(AbstractHttpConfigurer::disable)
+			// HSTS는 모든 응답에. 기본값은 request.isSecure()일 때만인데, forward-headers-strategy: none이라 ALB(TLS 종료) 뒤
+			// 요청이 http로 보인다 — 브라우저는 https로만 오므로(ALB가 TLS만 받음) 늘 붙여도 된다
+			.headers(headers -> headers
+				.httpStrictTransportSecurity(hsts -> hsts.requestMatcher(AnyRequestMatcher.INSTANCE)))
 			.authorizeHttpRequests(auth -> auth
 				.requestMatchers(HttpMethod.POST, "/api/portal/auth/login", "/api/portal/auth/logout").permitAll()
 				.requestMatchers(HttpMethod.POST, "/api/portal/password/setup", "/api/portal/password/setup/verify",
@@ -53,10 +60,10 @@ public class SecurityConfig {
 			.oauth2ResourceServer(oauth -> oauth
 				.bearerTokenResolver(new CookieBearerTokenResolver())
 				.jwt(jwt -> jwt.decoder(jwtDecoder))
-				.authenticationEntryPoint((request, response, ex) -> write(response, jsonMapper, ErrorCode.UNAUTHENTICATED)))
+				.authenticationEntryPoint((request, response, ex) -> write(request, response, jsonMapper, ErrorCode.UNAUTHENTICATED)))
 			.exceptionHandling(ex -> ex
-				.authenticationEntryPoint((request, response, e) -> write(response, jsonMapper, ErrorCode.UNAUTHENTICATED))
-				.accessDeniedHandler((request, response, e) -> write(response, jsonMapper, ErrorCode.FORBIDDEN)));
+				.authenticationEntryPoint((request, response, e) -> write(request, response, jsonMapper, ErrorCode.UNAUTHENTICATED))
+				.accessDeniedHandler((request, response, e) -> write(request, response, jsonMapper, ErrorCode.FORBIDDEN)));
 		return http.build();
 	}
 
@@ -71,7 +78,10 @@ public class SecurityConfig {
 		return new BCryptPasswordEncoder();
 	}
 
-	private static void write(HttpServletResponse response, JsonMapper jsonMapper, ErrorCode code) throws IOException {
+	private static void write(HttpServletRequest request, HttpServletResponse response, JsonMapper jsonMapper,
+			ErrorCode code) throws IOException {
+		// 감사 줄의 reason = 응답 본문의 code (보안 체인에서 끝난 401 · 403)
+		AuditContext.of(request).reason(code.name());
 		response.setStatus(code.status().value());
 		response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 		response.setCharacterEncoding("UTF-8");

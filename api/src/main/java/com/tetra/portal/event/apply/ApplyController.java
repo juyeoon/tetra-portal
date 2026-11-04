@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.tetra.portal.auth.CurrentTenant;
+import com.tetra.portal.common.audit.AuditContext;
 import com.tetra.portal.common.error.ApiErrorCodes;
 import com.tetra.portal.common.error.ErrorCode;
 import com.tetra.portal.domain.ApplicationStatus;
@@ -47,6 +48,7 @@ public class ApplyController {
 			@Valid @RequestPart("application") ApplyRequest application,
 			@RequestPart(name = "banner", required = false) MultipartFile banner) {
 		Long eventId = service.apply(CurrentTenant.id(jwt), application, banner);
+		AuditContext.current().event(eventId);
 		return ResponseEntity.status(HttpStatus.ACCEPTED).body(new ApplyResponse(eventId, ApplicationStatus.APPLYING));
 	}
 
